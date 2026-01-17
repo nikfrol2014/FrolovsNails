@@ -1,3 +1,59 @@
 spring:
   application:
     name: FrolovsNails
+
+  # Конфигурация PostgreSQL
+  datasource:
+    url: jdbc:postgresql://localhost:5432/frolovsnails
+    username: admin
+    password: securepassword
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: 30000
+      maximum-pool-size: 10
+
+  jpa:
+    hibernate:
+      ddl-auto: validate  # Liquibase будет управлять схемой
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+    show-sql: true
+
+  # Liquibase миграции
+  liquibase:
+    change-log: classpath:/db/changelog/db.changelog-master.yaml
+    enabled: true
+
+  devtools:
+    restart:
+      enabled: true
+
+server:
+  port: 8080
+
+logging:
+  level:
+    com.frolovsnails: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+  pattern:
+    console: "%d{HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"
+
+springdoc:
+  swagger-ui:
+    path: /swagger
+    enabled: true
+  api-docs:
+    path: /api-docs
+
+app:
+  security:
+    jwt:
+      secret-key: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" # 256-bit key
+      expiration: 86400000 # 24 часа в миллисекундах
+      refresh-token:
+        expiration: 604800000 # 7 дней в миллисекундах
