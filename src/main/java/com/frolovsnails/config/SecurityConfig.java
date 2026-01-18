@@ -3,6 +3,7 @@ package com.frolovsnails.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -40,22 +41,69 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Публичные эндпоинты
+                        // ВСЕ публичные эндпоинты (Swagger, статика, аутентификация)
                         .requestMatchers(
+                                // Swagger UI
                                 "/",
-                                "/swagger",
-                                "/swagger/**",
-                                "/swagger-ui/**",
+                                "/docs",
+                                "/api",
                                 "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/v3/api-docs/**",
+                                "/v3/api-docs",
                                 "/api-docs/**",
                                 "/api-docs",
+                                "/swagger-resources/**",
+                                "/swagger-resources",
+                                "/configuration/ui",
+                                "/configuration/security",
+                                "/webjars/**",
+                                "/webjars",
+                                "/favicon.ico",
 
                                 // Аутентификация
                                 "/api/auth/**",
 
-                                // Тестовые эндпоинты
-                                "/api/test**"
+                                // Публичные тестовые эндпоинты
+                                "/api/test/health",
+                                "/api/test/db-status",
+                                "/api/test/public",
+                                "/api/test/create-test-services", // для создания тестовых услуг
+
+                                // Публичные эндпоинты услуг
+                                "/api/services",
+                                "/api/services/**",
+                                "/api/services/categories",
+                                "/api/services/category/**",
+
+                                // Публичный доступ к просмотру доступных слотов
+                                "/api/schedule/availability",
+                                "/api/schedule/availability/**",
+                                "/api/schedule/availability/range",
+
+                                // Статические ресурсы (если будут)
+                                "/css/**",
+                                "/js/**",
+                                "/images/**",
+                                "/favicon.ico",
+
+                                // Ошибки
+                                "/error",
+                                "/error/**"
                         ).permitAll()
+
+                        // POST, PUT, DELETE для услуг требуют роли ADMIN
+                        .requestMatchers(HttpMethod.POST, "/api/services").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/services/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/services/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/services/**").hasRole("ADMIN")
+
+                        // Управление расписанием - только для ADMIN
+                        .requestMatchers(HttpMethod.GET, "/api/schedule/slots/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/schedule/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/schedule/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/schedule/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/schedule/**").hasRole("ADMIN")
 
                         // Все остальные требуют аутентификации
                         .anyRequest().authenticated()

@@ -17,8 +17,6 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Arrays;
-import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -36,23 +34,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
-        final String jwt;
-        final String userPhone;
 
-        // Проверяем наличие токена
+        // Если нет токена - просто пропускаем дальше
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            // Если запрос дошел до этого фильтра, значит Spring Security
-            // уже определил что это защищенный эндпоинт
-            log.warn("Защищенный эндпоинт требует JWT токен: {}", request.getRequestURI());
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Требуется авторизация");
+            filterChain.doFilter(request, response);
             return;
         }
 
-        // Извлекаем токен
-        jwt = authHeader.substring(7);
+        // Есть токен - проверяем его
+        final String jwt = authHeader.substring(7);
 
         try {
-            userPhone = jwtService.extractUsername(jwt);
+            final String userPhone = jwtService.extractUsername(jwt);
 
             if (userPhone != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = userDetailsService.loadUserByUsername(userPhone);
@@ -65,17 +58,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     );
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    log.debug("Аутентифицирован: {}", userPhone);
+                    log.debug("Аутентифицирован пользователь: {}", userPhone);
                 } else {
-                    log.warn("Невалидный токен");
-                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Невалидный токен");
-                    return;
+                    log.warn("Невалидный JWT токен для пользователя: {}", userPhone);
                 }
             }
         } catch (Exception e) {
-            log.error("Ошибка JWT: {}", e.getMessage());
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Ошибка аутентификации");
-            return;
+            log.error("Ошибка аутентификации по JWT: {}", e.getMessage());
+            // Не прерываем цепочку - пусть Spring Security сам разберется
         }
 
         filterChain.doFilter(request, response);

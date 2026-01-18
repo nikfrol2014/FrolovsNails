@@ -9,7 +9,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -107,5 +111,109 @@ public class TestController {
                 "work_slots", workSlotRepository.count(),
                 "appointments", appointmentRepository.count()
         ));
+    }
+
+    @PostMapping("/create-test-services")
+    @Operation(summary = "Создать тестовые услуги (публичный)")
+    public ResponseEntity<Map<String, Object>> createTestServices() {
+        try {
+            // Проверяем, есть ли уже услуги
+            if (serviceRepository.count() > 0) {
+                return ResponseEntity.ok(Map.of(
+                        "message", "Услуги уже существуют",
+                        "count", serviceRepository.count()
+                ));
+            }
+
+            // Создаем тестовые услуги
+            List<Service> services = List.of(
+                    createService("Маникюр классический", "Классический маникюр с покрытием", 90, 1500, "Маникюр"),
+                    createService("Маникюр аппаратный", "Аппаратный маникюр", 120, 2000, "Маникюр"),
+                    createService("Педикюр классический", "Классический педикюр", 120, 2000, "Педикюр"),
+                    createService("Педикюр аппаратный", "Аппаратный педикюр", 150, 2500, "Педикюр"),
+                    createService("Наращивание ногтей", "Наращивание гелем", 180, 3000, "Маникюр"),
+                    createService("Дизайн ногтей", "Художественный дизайн", 60, 1000, "Маникюр"),
+                    createService("Снятие покрытия", "Снятие гель-лака", 30, 500, "Маникюр"),
+                    createService("SPA-уход для рук", "SPA процедура для рук", 90, 1800, "Маникюр"),
+                    createService("SPA-уход для ног", "SPA процедура для ног", 120, 2200, "Педикюр")
+            );
+
+            serviceRepository.saveAll(services);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "✅ Тестовые услуги созданы",
+                    "count", services.size(),
+                    "categories", List.of("Маникюр", "Педикюр")
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    private Service createService(String name, String description, int duration, int price, String category) {
+        Service service = new Service();
+        service.setName(name);
+        service.setDescription(description);
+        service.setDurationMinutes(duration);
+        service.setPrice(BigDecimal.valueOf(price));
+        service.setCategory(category);
+        service.setIsActive(true);
+        return service;
+    }
+
+    @PostMapping("/create-test-slots")
+    @Operation(summary = "Создать тестовые рабочие слоты")
+    public ResponseEntity<Map<String, Object>> createTestSlots() {
+        try {
+            LocalDate tomorrow = LocalDate.now().plusDays(1);
+            LocalDate dayAfterTomorrow = LocalDate.now().plusDays(2);
+
+            // Проверяем, есть ли уже слоты на эти даты
+            if (!workSlotRepository.findByDate(tomorrow).isEmpty()) {
+                return ResponseEntity.ok(Map.of(
+                        "message", "Слоты уже существуют на " + tomorrow
+                ));
+            }
+
+            // Создаем слоты на завтра
+            List<WorkSlot> slots = List.of(
+                    createSlot(tomorrow, LocalTime.of(10, 0), LocalTime.of(11, 30), SlotStatus.AVAILABLE, "Утро"),
+                    createSlot(tomorrow, LocalTime.of(12, 0), LocalTime.of(13, 30), SlotStatus.AVAILABLE, "Обед"),
+                    createSlot(tomorrow, LocalTime.of(14, 0), LocalTime.of(15, 30), SlotStatus.AVAILABLE, "День"),
+                    createSlot(tomorrow, LocalTime.of(16, 0), LocalTime.of(17, 30), SlotStatus.BLOCKED, "Встреча"),
+
+                    // Слоты на послезавтра
+                    createSlot(dayAfterTomorrow, LocalTime.of(9, 0), LocalTime.of(10, 30), SlotStatus.AVAILABLE, "Раннее утро"),
+                    createSlot(dayAfterTomorrow, LocalTime.of(11, 0), LocalTime.of(12, 30), SlotStatus.AVAILABLE, null),
+                    createSlot(dayAfterTomorrow, LocalTime.of(13, 0), LocalTime.of(14, 30), SlotStatus.AVAILABLE, null)
+            );
+
+            workSlotRepository.saveAll(slots);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "✅ Тестовые слоты созданы",
+                    "count", slots.size(),
+                    "dates", List.of(tomorrow, dayAfterTomorrow),
+                    "note", "Один слот заблокирован (BLOCKED) как пример"
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    private WorkSlot createSlot(LocalDate date, LocalTime start, LocalTime end, SlotStatus status, String notes) {
+        WorkSlot slot = new WorkSlot();
+        slot.setDate(date);
+        slot.setStartTime(start);
+        slot.setEndTime(end);
+        slot.setStatus(status);
+        slot.setMasterNotes(notes);
+        return slot;
     }
 }

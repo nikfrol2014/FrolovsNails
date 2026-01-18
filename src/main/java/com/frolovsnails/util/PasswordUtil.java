@@ -14,6 +14,6 @@ public class PasswordUtil {
 
     public static void main(String[] args) {
         PasswordUtil util = new PasswordUtil();
-        System.out.println("Хэш пароля 'password123': " + util.encode("password123"));
+        System.out.println("Хэш пароля 'password123': " + util.encode("admin123"));
     }
 }
