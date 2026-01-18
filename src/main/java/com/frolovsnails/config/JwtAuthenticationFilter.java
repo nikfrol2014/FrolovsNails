@@ -17,6 +17,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
 
 @Component
 @RequiredArgsConstructor
@@ -37,22 +39,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         final String jwt;
         final String userPhone;
 
-        // Пропускаем публичные эндпоинты
-        String requestURI = request.getRequestURI();
-        if (requestURI.contains("/swagger") ||
-                requestURI.contains("/api-docs") ||
-                requestURI.contains("/api/auth") ||
-                requestURI.contains("/api/test") ||
-                requestURI.equals("/") ||
-                requestURI.equals("/api")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
         // Проверяем наличие токена
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            log.warn("JWT Token отсутствует в заголовке Authorization");
-            filterChain.doFilter(request, response);
+            // Если запрос дошел до этого фильтра, значит Spring Security
+            // уже определил что это защищенный эндпоинт
+            log.warn("Защищенный эндпоинт требует JWT токен: {}", request.getRequestURI());
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Требуется авторизация");
             return;
         }
 
@@ -63,10 +55,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             userPhone = jwtService.extractUsername(jwt);
 
             if (userPhone != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                // Загружаем пользователя
                 UserDetails userDetails = userDetailsService.loadUserByUsername(userPhone);
 
-                // Проверяем валидность токена
                 if (jwtService.isTokenValid(jwt, userDetails)) {
                     UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                             userDetails,
@@ -75,13 +65,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     );
                     authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                     SecurityContextHolder.getContext().setAuthentication(authToken);
-                    log.debug("Аутентифицирован пользователь: {}", userPhone);
+                    log.debug("Аутентифицирован: {}", userPhone);
                 } else {
-                    log.warn("Невалидный JWT токен для пользователя: {}", userPhone);
+                    log.warn("Невалидный токен");
+                    response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Невалидный токен");
+                    return;
                 }
             }
         } catch (Exception e) {
-            log.error("Ошибка аутентификации по JWT: {}", e.getMessage());
+            log.error("Ошибка JWT: {}", e.getMessage());
+            response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Ошибка аутентификации");
+            return;
         }
 
         filterChain.doFilter(request, response);

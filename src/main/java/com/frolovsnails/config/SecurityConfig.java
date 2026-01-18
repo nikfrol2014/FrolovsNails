@@ -54,7 +54,7 @@ public class SecurityConfig {
                                 "/api/auth/**",
 
                                 // Тестовые эндпоинты
-                                "/api/test/**"
+                                "/api/test**"
                         ).permitAll()
 
                         // Все остальные требуют аутентификации
