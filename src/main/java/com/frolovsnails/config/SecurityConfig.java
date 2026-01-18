@@ -81,6 +81,9 @@ public class SecurityConfig {
                                 "/api/schedule/availability/**",
                                 "/api/schedule/availability/range",
 
+                                // Профиль мастера - публичный
+                                "/api/profile/master",
+
                                 // Статические ресурсы (если будут)
                                 "/css/**",
                                 "/js/**",
@@ -114,6 +117,12 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/appointments/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/appointments/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/appointments/**").hasRole("ADMIN")
+
+                        // Профиль пользователя
+                        .requestMatchers(HttpMethod.GET, "/api/profile").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/profile").hasRole("CLIENT")
+                        .requestMatchers(HttpMethod.PATCH, "/api/profile/password").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/profile/stats").hasRole("CLIENT")
 
                         // Все остальные требуют аутентификации
                         .anyRequest().authenticated()
