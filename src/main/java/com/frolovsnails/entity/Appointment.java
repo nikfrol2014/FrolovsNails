@@ -1,5 +1,6 @@
 package com.frolovsnails.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -12,22 +13,57 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@NamedEntityGraphs({
+        @NamedEntityGraph(
+                name = "appointment.with-client-service-slot",
+                attributeNodes = {
+                        @NamedAttributeNode("client"),
+                        @NamedAttributeNode("service"),
+                        @NamedAttributeNode("workSlot")
+                }
+        ),
+        @NamedEntityGraph(
+                name = "appointment.with-all-details",
+                attributeNodes = {
+                        @NamedAttributeNode("client"),
+                        @NamedAttributeNode("service"),
+                        @NamedAttributeNode("workSlot")
+                },
+                subgraphs = {
+                        @NamedSubgraph(
+                                name = "client.user",
+                                attributeNodes = @NamedAttributeNode(value = "user")
+                        )
+                }
+        ),
+        @NamedEntityGraph(
+                name = "appointment.for-client",
+                attributeNodes = {
+                        @NamedAttributeNode("service"),
+                        @NamedAttributeNode("workSlot")
+                }
+        )
+})
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Appointment {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)  // ← LAZY!
     @JoinColumn(name = "client_id", nullable = false)
+    @JsonIgnoreProperties({"appointments", "user"})
     private Client client;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)  // ← LAZY!
     @JoinColumn(name = "service_id", nullable = false)
+    @JsonIgnoreProperties({"appointments"})
     private Service service;
 
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.LAZY)  // ← LAZY!
     @JoinColumn(name = "slot_id", nullable = false)
+    @JsonIgnoreProperties({"appointments"})
     private WorkSlot workSlot;
 
     @Enumerated(EnumType.STRING)

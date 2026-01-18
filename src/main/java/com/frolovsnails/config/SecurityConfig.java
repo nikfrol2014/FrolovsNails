@@ -105,6 +105,16 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/schedule/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/schedule/**").hasRole("ADMIN")
 
+                        // Записи - разные правила для разных методов
+                        .requestMatchers(HttpMethod.POST, "/api/appointments").hasRole("CLIENT")
+                        .requestMatchers(HttpMethod.GET, "/api/appointments/my/**").hasRole("CLIENT")
+                        .requestMatchers(HttpMethod.PATCH, "/api/appointments/my/**").hasRole("CLIENT")
+
+                        .requestMatchers(HttpMethod.GET, "/api/appointments").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/appointments/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/appointments/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/appointments/**").hasRole("ADMIN")
+
                         // Все остальные требуют аутентификации
                         .anyRequest().authenticated()
                 )

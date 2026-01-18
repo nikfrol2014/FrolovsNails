@@ -1,5 +1,6 @@
 package com.frolovsnails.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -12,6 +13,7 @@ import java.time.LocalDate;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler", "appointments"})
 public class Client {
 
     @Id
@@ -20,6 +22,7 @@ public class Client {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false, unique = true)
+    @JsonIgnoreProperties({"client", "password"})  // Игнорируем клиента и пароль
     private User user;
 
     @Column(name = "first_name")

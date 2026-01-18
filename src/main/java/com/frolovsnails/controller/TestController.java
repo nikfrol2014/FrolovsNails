@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/test")
@@ -215,5 +216,81 @@ public class TestController {
         slot.setStatus(status);
         slot.setMasterNotes(notes);
         return slot;
+    }
+
+    @PostMapping("/create-test-appointments")
+    @Operation(summary = "Создать тестовые записи")
+    public ResponseEntity<Map<String, Object>> createTestAppointments() {
+        try {
+            // Проверяем, есть ли уже записи
+            if (appointmentRepository.count() > 0) {
+                return ResponseEntity.ok(Map.of(
+                        "message", "Записи уже существуют",
+                        "count", appointmentRepository.count()
+                ));
+            }
+
+            // Получаем тестовых клиентов и услуги
+            Optional<Client> client1 = clientRepository.findByUserPhone("+79001112233");
+            Optional<Client> client2 = clientRepository.findByUserPhone("+79991234567");
+
+            List<Service> services = serviceRepository.findAll();
+            List<WorkSlot> slots = workSlotRepository.findAll();
+
+            if (services.isEmpty() || slots.isEmpty() || (!client1.isPresent() && !client2.isPresent())) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "error", "Недостаточно данных для создания записей",
+                        "services", services.size(),
+                        "slots", slots.size(),
+                        "clients", (client1.isPresent() ? 1 : 0) + (client2.isPresent() ? 1 : 0)
+                ));
+            }
+
+            // Создаем тестовые записи
+            List<Appointment> appointments = List.of();
+
+            if (client1.isPresent() && services.size() >= 1 && slots.size() >= 1) {
+                Appointment appointment1 = new Appointment();
+                appointment1.setClient(client1.get());
+                appointment1.setService(services.get(0));
+                appointment1.setWorkSlot(slots.get(0));
+                appointment1.setStatus(AppointmentStatus.CONFIRMED);
+                appointment1.setClientNotes("Тестовая запись 1");
+                appointments.add(appointment1);
+
+                // Обновляем статус слота
+                slots.get(0).setStatus(SlotStatus.BOOKED);
+                workSlotRepository.save(slots.get(0));
+            }
+
+            if (client2.isPresent() && services.size() >= 2 && slots.size() >= 2) {
+                Appointment appointment2 = new Appointment();
+                appointment2.setClient(client2.get());
+                appointment2.setService(services.get(1));
+                appointment2.setWorkSlot(slots.get(1));
+                appointment2.setStatus(AppointmentStatus.PENDING);
+                appointment2.setClientNotes("Тестовая запись 2");
+                appointments.add(appointment2);
+
+                // Обновляем статус слота
+                slots.get(1).setStatus(SlotStatus.BOOKED);
+                workSlotRepository.save(slots.get(1));
+            }
+
+            appointmentRepository.saveAll(appointments);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "✅ Тестовые записи созданы",
+                    "count", appointments.size(),
+                    "statuses", appointments.stream()
+                            .map(a -> a.getStatus().toString())
+                            .toList()
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", e.getMessage()
+            ));
+        }
     }
 }

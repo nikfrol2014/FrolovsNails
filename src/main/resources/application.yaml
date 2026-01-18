@@ -17,11 +17,16 @@ spring:
       ddl-auto: validate  # Liquibase будет управлять схемой
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
+        show_sql: false  # Отключаем, т.к. будет много запросов
         format_sql: true
+        # Включаем статистику для отладки N+1
+        generate_statistics: true
+        # Оптимизация для EntityGraph
+        default_batch_fetch_size: 20
+        order_inserts: true
+        order_updates: true
         jdbc:
           batch_size: 20
-    show-sql: true
 
   # Liquibase миграции
   liquibase:
@@ -37,11 +42,11 @@ server:
 
 logging:
   level:
-    com.frolovsnails: DEBUG
     org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
-  pattern:
-    console: "%d{HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"
+    org.hibernate.stat: DEBUG  # Статистика запросов
+    org.hibernate.orm.jdbc.bind: TRACE
+    # Отключаем подробные логи для EntityGraph (много информации)
+    org.hibernate.loader.plan: WARN
 
 springdoc:
   swagger-ui:
