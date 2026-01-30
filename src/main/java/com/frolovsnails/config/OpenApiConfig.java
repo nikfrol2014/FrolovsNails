@@ -29,6 +29,10 @@ import org.springframework.context.annotation.Configuration;
                 @Server(
                         url = "http://localhost:8080",
                         description = "Локальный сервер разработки"
+                ),
+                @Server(
+                        url = "http://192.168.0.151:8080", // ip на работе
+                        description = "Локальная сеть"
                 )
         },
         security = @SecurityRequirement(name = "bearerAuth")  // Применяет безопасность ко всем эндпоинтам

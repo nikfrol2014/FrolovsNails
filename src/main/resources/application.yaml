@@ -39,6 +39,7 @@ spring:
 
 server:
   port: 8080
+  address: 0.0.0.0  # ← слушаем все интерфейсы
 
 logging:
   level:
@@ -66,7 +67,9 @@ springdoc:
     url: /v3/api-docs
     urls:
       - url: /v3/api-docs
-        name: FrolovsNails API
+        name: FrolovsNails API (Local)
+      - url: http://192.168.0.151:8080/v3/api-docs  # ← IP на работе
+        name: FrolovsNails API (Network)
   api-docs:
     path: /v3/api-docs
     enabled: true
