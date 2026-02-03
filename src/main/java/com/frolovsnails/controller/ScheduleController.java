@@ -1,10 +1,12 @@
 package com.frolovsnails.controller;
 
-import com.frolovsnails.dto.request.CreateWorkSlotRequest;
+import com.frolovsnails.dto.request.CreateScheduleBlockRequest;
 import com.frolovsnails.dto.response.ApiResponse;
-import com.frolovsnails.entity.SlotStatus;
-import com.frolovsnails.entity.WorkSlot;
-import com.frolovsnails.repository.WorkSlotRepository;
+import com.frolovsnails.entity.AvailableDay;
+import com.frolovsnails.entity.ScheduleBlock;
+import com.frolovsnails.repository.AvailableDayRepository;
+import com.frolovsnails.repository.ScheduleBlockRepository;
+import com.frolovsnails.service.ScheduleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -15,254 +17,268 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/api/schedule")
-@Tag(name = "Schedule", description = "Управление расписанием и рабочими слотами")
+@Tag(name = "Schedule", description = "Управление расписанием и доступными днями")
 @RequiredArgsConstructor
 public class ScheduleController {
 
-    private final WorkSlotRepository workSlotRepository;
+    private final ScheduleService scheduleService;
+    private final AvailableDayRepository availableDayRepository;
+    private final ScheduleBlockRepository scheduleBlockRepository;
 
     // ========== ПУБЛИЧНЫЕ ЭНДПОИНТЫ (для клиентов) ==========
 
-    @GetMapping("/availability")
-    @Operation(summary = "Получить доступные слоты для записи")
-    public ResponseEntity<ApiResponse> getAvailableSlots(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+    @GetMapping("/available-days")
+    @Operation(summary = "Получить доступные дни для записи (публичный)")
+    public ResponseEntity<ApiResponse> getAvailableDays(
+            @RequestParam(defaultValue = "30") int daysCount) {
 
-        LocalDate targetDate = date != null ? date : LocalDate.now().plusDays(1);
+        try {
+            List<AvailableDay> availableDays = scheduleService.getUpcomingAvailableDays(daysCount);
 
-        List<WorkSlot> availableSlots = workSlotRepository.findByDateAndStatus(
-                targetDate, SlotStatus.AVAILABLE
-        );
-
-        return ResponseEntity.ok(ApiResponse.success(
-                "Доступные слоты на " + targetDate,
-                Map.of(
-                        "date", targetDate,
-                        "availableSlots", availableSlots,
-                        "count", availableSlots.size()
-                )
-        ));
-    }
-
-    @GetMapping("/availability/range")
-    @Operation(summary = "Получить доступные слоты в диапазоне дат")
-    public ResponseEntity<ApiResponse> getAvailableSlotsInRange(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-
-        if (startDate.isAfter(endDate)) {
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Доступные дни для записи",
+                    Map.of(
+                            "availableDays", availableDays,
+                            "count", availableDays.size(),
+                            "daysCount", daysCount
+                    )
+            ));
+        } catch (Exception e) {
             return ResponseEntity.badRequest().body(
-                    ApiResponse.error("Дата начала не может быть позже даты окончания")
+                    ApiResponse.error("Ошибка получения доступных дней: " + e.getMessage())
             );
         }
+    }
 
-        List<WorkSlot> availableSlots = workSlotRepository.findByDateBetweenAndStatus(
-                startDate, endDate, SlotStatus.AVAILABLE
-        );
+    @GetMapping("/availability")
+    @Operation(summary = "Получить доступные слоты на конкретную дату (публичный)")
+    public ResponseEntity<ApiResponse> getAvailableSlots(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam Long serviceId) {
 
-        return ResponseEntity.ok(ApiResponse.success(
-                "Доступные слоты с " + startDate + " по " + endDate,
-                Map.of(
-                        "startDate", startDate,
-                        "endDate", endDate,
-                        "availableSlots", availableSlots,
-                        "count", availableSlots.size()
-                )
-        ));
+        try {
+            // В реальном приложении здесь нужно получать услугу из БД
+            // и использовать её длительность. Пока что возвращаем заглушку.
+
+            // Для теста: предполагаем длительность 60 минут
+            int durationMinutes = 60;
+
+            List<LocalDateTime> availableSlots = scheduleService.getAvailableSlotsForClients(date, durationMinutes);
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Доступные слоты на " + date,
+                    Map.of(
+                            "date", date,
+                            "availableSlots", availableSlots,
+                            "count", availableSlots.size(),
+                            "slotDuration", "2.5 часа",
+                            "note", "Запись возможна только в указанные времена"
+                    )
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка получения доступного времени: " + e.getMessage())
+            );
+        }
     }
 
     // ========== АДМИН ЭНДПОИНТЫ (для мастера) ==========
 
-    @GetMapping("/slots")
-    @Operation(summary = "Получить все слоты (только для ADMIN)")
+    @PostMapping("/available-days")
+    @Operation(summary = "Добавить доступный день (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> getAllSlots(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+    public ResponseEntity<ApiResponse> addAvailableDay(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam @DateTimeFormat(pattern = "HH:mm") LocalTime workStart,
+            @RequestParam @DateTimeFormat(pattern = "HH:mm") LocalTime workEnd,
+            @RequestParam(required = false) String notes) {
 
-        List<WorkSlot> slots;
-        if (date != null) {
-            slots = workSlotRepository.findByDate(date);
+        try {
+            AvailableDay availableDay = scheduleService.addAvailableDay(date, workStart, workEnd, notes);
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Доступный день добавлен",
+                    availableDay
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка добавления дня: " + e.getMessage())
+            );
+        }
+    }
+
+    @GetMapping("/admin/available-days")
+    @Operation(summary = "Получить все дни расписания (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> getAllAvailableDays(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        try {
+            List<AvailableDay> days;
+
+            if (startDate != null && endDate != null) {
+                days = scheduleService.getAvailableDays(startDate, endDate);
+            } else {
+                // По умолчанию показываем ближайшие 60 дней
+                LocalDate defaultStart = LocalDate.now();
+                LocalDate defaultEnd = defaultStart.plusDays(60);
+                days = scheduleService.getAvailableDays(defaultStart, defaultEnd);
+            }
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Дни расписания",
+                    Map.of(
+                            "days", days,
+                            "count", days.size()
+                    )
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка получения дней: " + e.getMessage())
+            );
+        }
+    }
+
+    @PutMapping("/available-days/{id}")
+    @Operation(summary = "Обновить доступный день (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> updateAvailableDay(
+            @PathVariable Long id,
+            @RequestParam @DateTimeFormat(pattern = "HH:mm") LocalTime workStart,
+            @RequestParam @DateTimeFormat(pattern = "HH:mm") LocalTime workEnd,
+            @RequestParam Boolean isAvailable,
+            @RequestParam(required = false) String notes) {
+
+        try {
+            AvailableDay availableDay = scheduleService.updateAvailableDay(id, workStart, workEnd, isAvailable, notes);
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "День обновлен",
+                    availableDay
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка обновления дня: " + e.getMessage())
+            );
+        }
+    }
+
+    @DeleteMapping("/available-days/{id}")
+    @Operation(summary = "Удалить доступный день (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> deleteAvailableDay(@PathVariable Long id) {
+        try {
+            scheduleService.deleteAvailableDay(id);
+            return ResponseEntity.ok(ApiResponse.success("День удален"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка удаления дня: " + e.getMessage())
+            );
+        }
+    }
+
+    @GetMapping("/master/available-time")
+    @Operation(summary = "Получить свободное время для ручной записи (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> getMasterAvailableTime(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false, defaultValue = "30") Integer minDuration) {
+
+        try {
+            List<ScheduleService.TimeRange> availableRanges =
+                    scheduleService.getAvailableTimeRangesForMaster(date, minDuration);
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Свободное время на " + date,
+                    Map.of(
+                            "date", date,
+                            "minDuration", minDuration + " минут",
+                            "availableRanges", availableRanges.stream()
+                                    .map(range -> Map.of(
+                                            "start", range.getStartTime().toString(),
+                                            "end", range.getEndTime().toString(),
+                                            "duration", range.getDurationMinutes() + " минут"
+                                    ))
+                                    .toList(),
+                            "count", availableRanges.size(),
+                            "note", "Мастер может записать в любое свободное время"
+                    )
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка получения свободного времени: " + e.getMessage())
+            );
+        }
+    }
+
+    @PostMapping("/blocks")
+    @Operation(summary = "Заблокировать время (отпуск, больничный) (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> createScheduleBlock(@Valid @RequestBody CreateScheduleBlockRequest request) {
+        try {
+            ScheduleBlock block = scheduleService.blockTime(
+                    request.getStartTime(),
+                    request.getEndTime(),
+                    request.getReason(),
+                    request.getNotes()
+            );
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Время успешно заблокировано",
+                    block
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка блокировки времени: " + e.getMessage())
+            );
+        }
+    }
+
+    @GetMapping("/blocks")
+    @Operation(summary = "Получить все блокировки времени (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> getScheduleBlocks(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+
+        List<ScheduleBlock> blocks;
+
+        if (startDate != null && endDate != null) {
+            LocalDateTime start = startDate.atStartOfDay();
+            LocalDateTime end = endDate.plusDays(1).atStartOfDay();
+            blocks = scheduleBlockRepository.findBlocksInRange(start, end);
         } else {
-            slots = workSlotRepository.findAll();
+            blocks = scheduleBlockRepository.findAll();
         }
 
-        // Группируем по статусам для удобства
-        long availableCount = slots.stream().filter(s -> s.getStatus() == SlotStatus.AVAILABLE).count();
-        long bookedCount = slots.stream().filter(s -> s.getStatus() == SlotStatus.BOOKED).count();
-        long blockedCount = slots.stream().filter(s -> s.getStatus() == SlotStatus.BLOCKED).count();
-
         return ResponseEntity.ok(ApiResponse.success(
-                date != null ? "Слоты на " + date : "Все слоты",
+                "Блокировки времени",
                 Map.of(
-                        "slots", slots,
-                        "totalCount", slots.size(),
-                        "stats", Map.of(
-                                "available", availableCount,
-                                "booked", bookedCount,
-                                "blocked", blockedCount
-                        )
+                        "blocks", blocks,
+                        "count", blocks.size()
                 )
         ));
     }
 
-    @GetMapping("/slots/{id}")
-    @Operation(summary = "Получить слот по ID (только для ADMIN)")
+    @DeleteMapping("/blocks/{id}")
+    @Operation(summary = "Разблокировать время (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> getSlotById(@PathVariable Long id) {
-        return workSlotRepository.findById(id)
-                .map(slot -> ResponseEntity.ok(ApiResponse.success("Слот найден", slot)))
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @PostMapping("/slots")
-    @Operation(summary = "Создать рабочий слот (только для ADMIN)")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> createWorkSlot(@Valid @RequestBody CreateWorkSlotRequest request) {
+    public ResponseEntity<ApiResponse> deleteScheduleBlock(@PathVariable Long id) {
         try {
-            // Проверяем, не пересекается ли слот с существующими
-            boolean exists = workSlotRepository.existsByDateAndStartTimeAndEndTime(
-                    request.getDate(), request.getStartTime(), request.getEndTime()
-            );
-
-            if (exists) {
-                return ResponseEntity.badRequest().body(
-                        ApiResponse.error("Слот на это время уже существует")
-                );
-            }
-
-            WorkSlot slot = new WorkSlot();
-            slot.setDate(request.getDate());
-            slot.setStartTime(request.getStartTime());
-            slot.setEndTime(request.getEndTime());
-            slot.setStatus(request.getStatus() != null ? request.getStatus() : SlotStatus.AVAILABLE);
-            slot.setMasterNotes(request.getMasterNotes());
-
-            WorkSlot savedSlot = workSlotRepository.save(slot);
-            return ResponseEntity.ok(ApiResponse.success(
-                    "Рабочий слот создан",
-                    savedSlot
-            ));
+            scheduleService.unblockTime(id);
+            return ResponseEntity.ok(ApiResponse.success("Время разблокировано"));
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(
-                    ApiResponse.error("Ошибка создания слота: " + e.getMessage())
+                    ApiResponse.error("Ошибка разблокировки: " + e.getMessage())
             );
         }
-    }
-
-    @PostMapping("/slots/batch")
-    @Operation(summary = "Создать несколько слотов пакетно (только для ADMIN)")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> createWorkSlotsBatch(@Valid @RequestBody List<CreateWorkSlotRequest> requests) {
-        try {
-            List<WorkSlot> createdSlots = requests.stream()
-                    .map(request -> {
-                        WorkSlot slot = new WorkSlot();
-                        slot.setDate(request.getDate());
-                        slot.setStartTime(request.getStartTime());
-                        slot.setEndTime(request.getEndTime());
-                        slot.setStatus(request.getStatus() != null ? request.getStatus() : SlotStatus.AVAILABLE);
-                        slot.setMasterNotes(request.getMasterNotes());
-                        return slot;
-                    })
-                    .toList();
-
-            List<WorkSlot> savedSlots = workSlotRepository.saveAll(createdSlots);
-
-            return ResponseEntity.ok(ApiResponse.success(
-                    "Создано " + savedSlots.size() + " слотов",
-                    savedSlots
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(
-                    ApiResponse.error("Ошибка пакетного создания: " + e.getMessage())
-            );
-        }
-    }
-
-    @PutMapping("/slots/{id}")
-    @Operation(summary = "Обновить рабочий слот (только для ADMIN)")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> updateWorkSlot(
-            @PathVariable Long id,
-            @Valid @RequestBody CreateWorkSlotRequest request) {
-
-        return workSlotRepository.findById(id)
-                .map(slot -> {
-                    // Нельзя изменять забронированные слоты (должны быть через отмену записи)
-                    if (slot.getStatus() == SlotStatus.BOOKED) {
-                        return ResponseEntity.badRequest().body(
-                                ApiResponse.error("Нельзя изменять забронированный слот. Сначала отмените запись.")
-                        );
-                    }
-
-                    slot.setDate(request.getDate());
-                    slot.setStartTime(request.getStartTime());
-                    slot.setEndTime(request.getEndTime());
-                    slot.setStatus(request.getStatus() != null ? request.getStatus() : slot.getStatus());
-                    slot.setMasterNotes(request.getMasterNotes());
-
-                    WorkSlot updatedSlot = workSlotRepository.save(slot);
-                    return ResponseEntity.ok(ApiResponse.success(
-                            "Слот обновлен",
-                            updatedSlot
-                    ));
-                })
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @PatchMapping("/slots/{id}/block")
-    @Operation(summary = "Заблокировать слот (отпуск/болезнь) (только для ADMIN)")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> blockSlot(@PathVariable Long id) {
-        return workSlotRepository.findById(id)
-                .map(slot -> {
-                    if (slot.getStatus() == SlotStatus.BOOKED) {
-                        return ResponseEntity.badRequest().body(
-                                ApiResponse.error("Нельзя заблокировать забронированный слот. Сначала отмените запись.")
-                        );
-                    }
-
-                    slot.setStatus(SlotStatus.BLOCKED);
-                    workSlotRepository.save(slot);
-                    return ResponseEntity.ok(ApiResponse.success("Слот заблокирован"));
-                })
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @PatchMapping("/slots/{id}/unblock")
-    @Operation(summary = "Разблокировать слот (только для ADMIN)")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> unblockSlot(@PathVariable Long id) {
-        return workSlotRepository.findById(id)
-                .map(slot -> {
-                    slot.setStatus(SlotStatus.AVAILABLE);
-                    workSlotRepository.save(slot);
-                    return ResponseEntity.ok(ApiResponse.success("Слот разблокирован"));
-                })
-                .orElse(ResponseEntity.notFound().build());
-    }
-
-    @DeleteMapping("/slots/{id}")
-    @Operation(summary = "Удалить слот (только для ADMIN)")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> deleteSlot(@PathVariable Long id) {
-        return workSlotRepository.findById(id)
-                .map(slot -> {
-                    if (slot.getStatus() == SlotStatus.BOOKED) {
-                        return ResponseEntity.badRequest().body(
-                                ApiResponse.error("Нельзя удалить забронированный слот. Сначала отмените запись.")
-                        );
-                    }
-
-                    workSlotRepository.delete(slot);
-                    return ResponseEntity.ok(ApiResponse.success("Слот удален"));
-                })
-                .orElse(ResponseEntity.notFound().build());
     }
 }

@@ -1,0 +1,53 @@
+# db/changelog/changes/004-simple-fix.yaml
+databaseChangeLog:
+  - changeSet:
+      id: 004-simple-fix
+      author: frolovsnails
+      changes:
+        # Просто добавляем новые колонки, остальное уже почистили вручную
+        - addColumn:
+            tableName: appointments
+            columns:
+              - column:
+                  name: start_time
+                  type: TIMESTAMP
+                  defaultValueComputed: "CURRENT_TIMESTAMP"
+                  constraints:
+                    nullable: false
+              - column:
+                  name: end_time
+                  type: TIMESTAMP
+                  defaultValueComputed: "CURRENT_TIMESTAMP + INTERVAL '1 hour'"
+                  constraints:
+                    nullable: false
+
+        - createTable:
+            tableName: working_schedule
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: day_of_week
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: work_start
+                  type: TIME
+                  constraints:
+                    nullable: false
+              - column:
+                  name: work_end
+                  type: TIME
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_active
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false

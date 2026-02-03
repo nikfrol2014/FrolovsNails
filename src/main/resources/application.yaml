@@ -15,12 +15,13 @@ spring:
   jpa:
     hibernate:
       ddl-auto: validate  # Liquibase будет управлять схемой
+#      ddl-auto: update
     properties:
       hibernate:
         show_sql: false  # Отключаем, т.к. будет много запросов
         format_sql: true
         # Включаем статистику для отладки N+1
-        generate_statistics: true
+        generate_statistics: false
         # Оптимизация для EntityGraph
         default_batch_fetch_size: 20
         order_inserts: true

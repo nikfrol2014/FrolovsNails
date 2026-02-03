@@ -79,7 +79,6 @@ public class SecurityConfig {
                                 // Публичный доступ к просмотру доступных слотов
                                 "/api/schedule/availability",
                                 "/api/schedule/availability/**",
-                                "/api/schedule/availability/range",
 
                                 // Профиль мастера - публичный
                                 "/api/profile/master",
@@ -102,21 +101,19 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/services/**").hasRole("ADMIN")
 
                         // Управление расписанием - только для ADMIN
-                        .requestMatchers(HttpMethod.GET, "/api/schedule/slots/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/schedule/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PUT, "/api/schedule/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/schedule/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/schedule/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/schedule/working-hours").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/schedule/working-hours/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/schedule/blocks").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/schedule/blocks").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.DELETE, "/api/schedule/blocks/**").hasRole("ADMIN")
 
                         // Записи - разные правила для разных методов
-                        .requestMatchers(HttpMethod.POST, "/api/appointments").hasRole("CLIENT")
-                        .requestMatchers(HttpMethod.GET, "/api/appointments/my/**").hasRole("CLIENT")
-                        .requestMatchers(HttpMethod.PATCH, "/api/appointments/my/**").hasRole("CLIENT")
+                        .requestMatchers("/api/appointments/client/available-slots").hasRole("CLIENT")
 
-                        .requestMatchers(HttpMethod.GET, "/api/appointments").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.GET, "/api/appointments/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/appointments/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.DELETE, "/api/appointments/**").hasRole("ADMIN")
+                        // Админские эндпоинты для ручного управления
+                        .requestMatchers("/api/appointments/master/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/appointments/master").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/appointments/master/**").hasRole("ADMIN")
 
                         // Профиль пользователя
                         .requestMatchers(HttpMethod.GET, "/api/profile").authenticated()

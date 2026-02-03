@@ -1,18 +1,23 @@
 package com.frolovsnails.controller;
 
 import com.frolovsnails.dto.request.CreateAppointmentRequest;
+import com.frolovsnails.dto.request.CreateMasterAppointmentRequest;
 import com.frolovsnails.dto.request.UpdateAppointmentStatusRequest;
 import com.frolovsnails.dto.response.ApiResponse;
 import com.frolovsnails.dto.response.AppointmentResponse;
 import com.frolovsnails.entity.*;
 import com.frolovsnails.mapper.AppointmentMapper;
-import com.frolovsnails.repository.*;
+import com.frolovsnails.repository.AppointmentRepository;
+import com.frolovsnails.repository.ServiceRepository;
+import com.frolovsnails.repository.UserRepository;
 import com.frolovsnails.service.AppointmentService;
+import com.frolovsnails.service.ScheduleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -31,31 +36,68 @@ import java.util.Map;
 public class AppointmentController {
 
     private final AppointmentService appointmentService;
-    private final AppointmentRepository appointmentRepository;
-    private final ClientRepository clientRepository;
+    private final ScheduleService scheduleService;
     private final ServiceRepository serviceRepository;
-    private final WorkSlotRepository workSlotRepository;
-    private final UserRepository userRepository;
+    private final AppointmentRepository appointmentRepository;
     private final AppointmentMapper appointmentMapper;
+    private final UserRepository userRepository;
 
     // ========== КЛИЕНТСКИЕ ЭНДПОИНТЫ ==========
 
-    @PostMapping
-    @Operation(summary = "Создать новую запись (для клиентов)")
+    @GetMapping("/client/available-slots")
+    @Operation(summary = "Получить доступные слоты для записи (для клиентов)")
     @PreAuthorize("hasRole('CLIENT')")
-    public ResponseEntity<ApiResponse> createAppointment(@Valid @RequestBody CreateAppointmentRequest request) {
+    public ResponseEntity<ApiResponse> getClientAvailableSlots(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam Long serviceId) {
+
         try {
-            // Получаем текущего пользователя
+            Service service = serviceRepository.findById(serviceId)
+                    .orElseThrow(() -> new RuntimeException("Услуга не найдена"));
+
+            List<LocalDateTime> slots = scheduleService.getAvailableSlotsForClients(
+                    date, service.getDurationMinutes());
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Доступные слоты на " + date,
+                    Map.of(
+                            "date", date,
+                            "service", Map.of(
+                                    "id", service.getId(),
+                                    "name", service.getName(),
+                                    "duration", service.getDurationMinutes()
+                            ),
+                            "slots", slots.stream()
+                                    .map(LocalDateTime::toString)
+                                    .toList(),
+                            "count", slots.size(),
+                            "slotDuration", "2.5 часа",
+                            "note", "Запись возможна только в указанные времена"
+                    )
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка получения слотов: " + e.getMessage())
+            );
+        }
+    }
+
+    @PostMapping("/client")
+    @Operation(summary = "Создать запись через систему (для клиентов)")
+    @PreAuthorize("hasRole('CLIENT')")
+    public ResponseEntity<ApiResponse> createClientAppointment(@Valid @RequestBody CreateAppointmentRequest request) {
+        try {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             String phone = auth.getName();
 
-            Appointment appointment = appointmentService.createAppointment(phone, request);
+            Appointment appointment = appointmentService.createClientAppointment(phone, request);
 
             return ResponseEntity.ok(ApiResponse.success(
-                    "✅ Запись создана успешно! Статус: " + appointment.getStatus(),
+                    "✅ Запись создана успешно!",
                     Map.of(
-                            "appointment", appointment,
-                            "nextStep", "Ожидайте подтверждения от мастера"
+                            "appointment", appointmentMapper.toResponse(appointment),
+                            "isManual", false,
+                            "note", "Запись создана через систему"
                     )
             ));
         } catch (Exception e) {
@@ -87,7 +129,6 @@ public class AppointmentController {
             appointments = appointmentService.getClientAppointments(phone);
         }
 
-        // Преобразуем в DTO
         List<AppointmentResponse> appointmentResponses = appointments.stream()
                 .map(appointmentMapper::toResponse)
                 .toList();
@@ -109,7 +150,8 @@ public class AppointmentController {
         String phone = auth.getName();
 
         return appointmentService.getClientAppointmentById(phone, id)
-                .map(appointment -> ResponseEntity.ok(ApiResponse.success("Запись найдена", appointment)))
+                .map(appointment -> ResponseEntity.ok(
+                        ApiResponse.success("Запись найдена", appointmentMapper.toResponse(appointment))))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -126,9 +168,8 @@ public class AppointmentController {
             return ResponseEntity.ok(ApiResponse.success(
                     "✅ Запись отменена",
                     Map.of(
-                            "appointment", appointment,
-                            "status", appointment.getStatus(),
-                            "slotStatus", "Слот освобожден"
+                            "appointment", appointmentMapper.toResponse(appointment),
+                            "status", appointment.getStatus()
                     )
             ));
         } catch (Exception e) {
@@ -138,7 +179,66 @@ public class AppointmentController {
         }
     }
 
+    // ========== МАСТЕРСКИЕ ЭНДПОИНТЫ ==========
+
+    @GetMapping("/master/available-time")
+    @Operation(summary = "Получить свободное время для ручной записи (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> getMasterAvailableTime(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false, defaultValue = "30") Integer minDuration) {
+
+        try {
+            List<ScheduleService.TimeRange> availableRanges =
+                    scheduleService.getAvailableTimeRangesForMaster(date, minDuration);
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Свободное время на " + date,
+                    Map.of(
+                            "date", date,
+                            "minDuration", minDuration + " минут",
+                            "availableRanges", availableRanges.stream()
+                                    .map(range -> Map.of(
+                                            "start", range.getStartTime().toString(),
+                                            "end", range.getEndTime().toString(),
+                                            "duration", range.getDurationMinutes() + " минут"
+                                    ))
+                                    .toList(),
+                            "count", availableRanges.size(),
+                            "note", "Мастер может записать в любое свободное время"
+                    )
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка получения свободного времени: " + e.getMessage())
+            );
+        }
+    }
+
+    @PostMapping("/master")
+    @Operation(summary = "Создать ручную запись (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> createMasterAppointment(@Valid @RequestBody CreateMasterAppointmentRequest request) {
+        try {
+            Appointment appointment = appointmentService.createMasterAppointment(request);
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "✅ Ручная запись создана",
+                    Map.of(
+                            "appointment", appointmentMapper.toResponse(appointment),
+                            "isManual", true,
+                            "note", "Запись создана мастером вручную"
+                    )
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("❌ Ошибка создания ручной записи: " + e.getMessage())
+            );
+        }
+    }
+
     // ========== АДМИНСКИЕ ЭНДПОИНТЫ ==========
+
     @GetMapping
     @Operation(summary = "Получить все записи (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
@@ -155,14 +255,17 @@ public class AppointmentController {
             appointments = appointmentService.getAppointmentsByStatus(status);
         } else if (date != null) {
             appointments = appointmentService.getAppointmentsByDate(date);
-        } else if (clientId != null) {
-            // Для конкретного клиента
-            appointments = appointmentRepository.findByClientId(clientId);
         } else {
             appointments = appointmentService.getAllAppointments();
         }
 
-        // Преобразуем в DTO
+        // Фильтрация по clientId если указан
+        if (clientId != null) {
+            appointments = appointments.stream()
+                    .filter(a -> a.getClient().getId().equals(clientId))
+                    .toList();
+        }
+
         List<AppointmentResponse> appointmentResponses = appointments.stream()
                 .map(appointmentMapper::toResponse)
                 .toList();
@@ -177,7 +280,7 @@ public class AppointmentController {
         return ResponseEntity.ok(ApiResponse.success(
                 "Всего записей: " + appointments.size(),
                 Map.of(
-                        "appointments", appointments,
+                        "appointments", appointmentResponses,
                         "total", appointments.size(),
                         "stats", Map.of(
                                 "created", createdCount,
@@ -195,7 +298,8 @@ public class AppointmentController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getAppointmentById(@PathVariable Long id) {
         return appointmentRepository.findById(id)
-                .map(appointment -> ResponseEntity.ok(ApiResponse.success("Запись найдена", appointment)))
+                .map(appointment -> ResponseEntity.ok(
+                        ApiResponse.success("Запись найдена", appointmentMapper.toResponse(appointment))))
                 .orElse(ResponseEntity.notFound().build());
     }
 
@@ -211,8 +315,8 @@ public class AppointmentController {
 
             String message = switch (appointment.getStatus()) {
                 case PENDING -> "✅ Запись переведена в ожидание подтверждения";
-                case CONFIRMED -> "✅ Запись подтверждена! Уведомление отправлено клиенту";
-                case CANCELLED -> "✅ Запись отменена. Слот освобожден";
+                case CONFIRMED -> "✅ Запись подтверждена!";
+                case CANCELLED -> "✅ Запись отменена";
                 case COMPLETED -> "✅ Запись отмечена как выполненная";
                 default -> "Статус обновлен";
             };
@@ -220,7 +324,7 @@ public class AppointmentController {
             return ResponseEntity.ok(ApiResponse.success(
                     message,
                     Map.of(
-                            "appointment", appointment,
+                            "appointment", appointmentMapper.toResponse(appointment),
                             "newStatus", appointment.getStatus()
                     )
             ));
@@ -232,21 +336,21 @@ public class AppointmentController {
     }
 
     @PatchMapping("/{id}/reschedule")
-    @Operation(summary = "Перенести запись на другой слот (только для ADMIN)")
+    @Operation(summary = "Перенести запись на другое время (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> rescheduleAppointment(
             @PathVariable Long id,
-            @RequestParam Long newSlotId) {
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime newStartTime) {
 
         try {
-            Appointment appointment = appointmentService.rescheduleAppointment(id, newSlotId);
+            Appointment appointment = appointmentService.rescheduleAppointment(id, newStartTime);
 
             return ResponseEntity.ok(ApiResponse.success(
                     "✅ Запись перенесена успешно",
                     Map.of(
-                            "appointment", appointment,
-                            "newSlot", appointment.getWorkSlot(),
-                            "oldSlotFreed", true
+                            "appointment", appointmentMapper.toResponse(appointment),
+                            "oldTime", "Перенесена",
+                            "newTime", appointment.getStartTime()
                     )
             ));
         } catch (Exception e) {
@@ -277,15 +381,20 @@ public class AppointmentController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
-        List<Appointment> appointments = appointmentRepository.findByCreatedAtBetween(
-                startDate.atStartOfDay(),
-                endDate.plusDays(1).atStartOfDay()
-        );
+        // Простая реализация - можно улучшить
+        List<Appointment> allAppointments = appointmentRepository.findAll();
+
+        List<Appointment> filteredAppointments = allAppointments.stream()
+                .filter(a -> {
+                    LocalDate appointmentDate = a.getStartTime().toLocalDate();
+                    return !appointmentDate.isBefore(startDate) && !appointmentDate.isAfter(endDate);
+                })
+                .toList();
 
         // Группировка по дням
-        Map<LocalDate, Long> dailyCount = appointments.stream()
+        Map<LocalDate, Long> dailyCount = filteredAppointments.stream()
                 .collect(java.util.stream.Collectors.groupingBy(
-                        a -> a.getCreatedAt().toLocalDate(),
+                        a -> a.getStartTime().toLocalDate(),
                         java.util.stream.Collectors.counting()
                 ));
 
@@ -293,13 +402,36 @@ public class AppointmentController {
                 "Статистика с " + startDate + " по " + endDate,
                 Map.of(
                         "period", Map.of("start", startDate, "end", endDate),
-                        "totalAppointments", appointments.size(),
-                        "dailyStats", dailyCount,
-                        "revenueEstimate", appointments.stream()
-                                .filter(a -> a.getStatus() == AppointmentStatus.COMPLETED)
-                                .mapToDouble(a -> a.getService().getPrice().doubleValue())
-                                .sum()
+                        "totalAppointments", filteredAppointments.size(),
+                        "dailyStats", dailyCount
                 )
         ));
+    }
+
+    // ========== ОБЩИЕ ЭНДПОИНТЫ ==========
+
+    @GetMapping("/{id}/details")
+    @Operation(summary = "Получить детали записи по ID")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse> getAppointmentDetails(@PathVariable Long id) {
+        return appointmentRepository.findById(id)
+                .map(appointment -> {
+                    // Проверка прав: клиент может видеть только свои записи
+                    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                    String phone = auth.getName();
+                    User user = userRepository.findByPhone(phone)
+                            .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+                    if (user.getRole() == Role.CLIENT &&
+                            !appointment.getClient().getUser().getId().equals(user.getId())) {
+                        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                                .body(ApiResponse.error("Доступ запрещен"));
+                    }
+
+                    return ResponseEntity.ok(
+                            ApiResponse.success("Запись найдена", appointmentMapper.toResponse(appointment))
+                    );
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 }

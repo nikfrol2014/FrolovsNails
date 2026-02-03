@@ -1,6 +1,7 @@
 package com.frolovsnails.service;
 
 import com.frolovsnails.dto.request.CreateAppointmentRequest;
+import com.frolovsnails.dto.request.CreateMasterAppointmentRequest;
 import com.frolovsnails.dto.request.UpdateAppointmentStatusRequest;
 import com.frolovsnails.dto.response.AppointmentResponse;
 import com.frolovsnails.entity.*;
@@ -11,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,12 +24,15 @@ public class AppointmentService {
     private final AppointmentRepository appointmentRepository;
     private final ClientRepository clientRepository;
     private final ServiceRepository serviceRepository;
-    private final WorkSlotRepository workSlotRepository;
     private final UserRepository userRepository;
     private final AppointmentMapper appointmentMapper;
+    private final ScheduleService scheduleService;
+    private final ScheduleBlockRepository scheduleBlockRepository;
+
+    // ========== ДЛЯ КЛИЕНТОВ ==========
 
     @Transactional
-    public Appointment createAppointment(String clientPhone, CreateAppointmentRequest request) {
+    public Appointment createClientAppointment(String clientPhone, CreateAppointmentRequest request) {
         // 1. Находим клиента
         Client client = clientRepository.findByUserPhone(clientPhone)
                 .orElseThrow(() -> new RuntimeException("Клиент не найден"));
@@ -37,44 +42,119 @@ public class AppointmentService {
                 .filter(Service::getIsActive)
                 .orElseThrow(() -> new RuntimeException("Услуга не найдена или неактивна"));
 
-        // 3. Проверяем слот
-        WorkSlot slot = workSlotRepository.findById(request.getSlotId())
-                .orElseThrow(() -> new RuntimeException("Слот не найден"));
-
-        // 4. Проверяем доступность слота
-        if (slot.getStatus() != SlotStatus.AVAILABLE) {
-            throw new RuntimeException("Слот недоступен для записи. Статус: " + slot.getStatus());
+        // 3. Проверяем, что время соответствует правилам для клиентов
+        if (!scheduleService.canBookClientSlot(request.getStartTime(), service.getDurationMinutes())) {
+            throw new RuntimeException("Невозможно записаться на это время. Выберите доступный слот.");
         }
 
-        // 5. Создаем запись
+        // 4. Создаем запись (isManual = false)
+        Appointment appointment = createAppointment(client, service, request.getStartTime(),
+                request.getClientNotes(), false);
+
+        log.info("Клиент {} записался на услугу {} в {}",
+                clientPhone, service.getName(), request.getStartTime());
+
+        return appointment;
+    }
+
+    // ========== ДЛЯ МАСТЕРА ==========
+
+    @Transactional
+    public Appointment createMasterAppointment(CreateMasterAppointmentRequest request) {
+        // 1. Валидация запроса
+        if (!request.isValid()) {
+            throw new RuntimeException("Укажите либо ID существующего клиента, либо телефон и имя нового клиента");
+        }
+
+        // 2. Находим или создаем клиента
+        Client client = findOrCreateClient(request);
+
+        // 3. Проверяем услугу
+        Service service = serviceRepository.findById(request.getServiceId())
+                .filter(Service::getIsActive)
+                .orElseThrow(() -> new RuntimeException("Услуга не найдена или неактивна"));
+
+        // 4. Проверяем доступность времени (для мастера - более гибкие правила)
+        if (!scheduleService.canBookMasterSlot(request.getStartTime(), service.getDurationMinutes())) {
+            throw new RuntimeException("Это время уже занято");
+        }
+
+        // 5. Создаем запись (isManual = true)
+        Appointment appointment = createAppointment(client, service, request.getStartTime(),
+                request.getNotes(), true);
+
+        log.info("Мастер создал ручную запись для {} на услугу {} в {}",
+                client.getFirstName(), service.getName(), request.getStartTime());
+
+        return appointment;
+    }
+
+    // ========== ОБЩИЕ МЕТОДЫ ==========
+
+    private Appointment createAppointment(Client client, Service service,
+                                          LocalDateTime startTime, String notes, boolean isManual) {
         Appointment appointment = new Appointment();
         appointment.setClient(client);
         appointment.setService(service);
-        appointment.setWorkSlot(slot);
+        appointment.setStartTime(startTime);
+        appointment.setEndTime(calculateEndTime(startTime, service));
         appointment.setStatus(AppointmentStatus.CREATED);
-        appointment.setClientNotes(request.getClientNotes());
+        appointment.setClientNotes(notes);
+        appointment.setIsManual(isManual);
 
-        Appointment savedAppointment = appointmentRepository.save(appointment);
-
-        // 6. Обновляем статус слота
-        slot.setStatus(SlotStatus.BOOKED);
-        workSlotRepository.save(slot);
-
-        log.info("Создана новая запись ID: {} для клиента: {} на услугу: {}",
-                savedAppointment.getId(), client.getUser().getPhone(), service.getName());
-
-        return savedAppointment;
+        return appointmentRepository.save(appointment);
     }
 
-    // ========== ОПТИМИЗИРОВАННЫЕ МЕТОДЫ ЧТЕНИЯ ==========
+    private LocalDateTime calculateEndTime(LocalDateTime startTime, Service service) {
+        // Округляем длительность до 30 минут вверх
+        int duration = service.getDurationMinutes();
+        int slots = (int) Math.ceil(duration / 30.0);
+        return startTime.plusMinutes(slots * 30L);
+    }
+
+    private Client findOrCreateClient(CreateMasterAppointmentRequest request) {
+        // Вариант 1: Используем существующего клиента
+        if (request.getClientId() != null) {
+            return clientRepository.findById(request.getClientId())
+                    .orElseThrow(() -> new RuntimeException("Клиент не найден"));
+        }
+
+        // Вариант 2: Создаем нового клиента
+        String phone = request.getClientPhone();
+        String name = request.getClientName();
+        String lastName = request.getClientLastName();
+
+        // Проверяем, нет ли уже клиента с таким телефоном
+        Optional<Client> existingClient = clientRepository.findByUserPhone(phone);
+        if (existingClient.isPresent()) {
+            return existingClient.get();
+        }
+
+        // Создаем нового пользователя
+        User user = new User();
+        user.setPhone(phone);
+        user.setPassword("TEMPORARY_PASSWORD");
+        user.setRole(Role.CLIENT);
+        user.setEnabled(true);
+        user = userRepository.save(user);
+
+        // Создаем клиента
+        Client client = new Client();
+        client.setUser(user);
+        client.setFirstName(name);
+        client.setLastName(lastName != null ? lastName : "");
+        return clientRepository.save(client);
+    }
+
+    // ========== МЕТОДЫ ЧТЕНИЯ ==========
 
     @Transactional(readOnly = true)
     public List<Appointment> getClientAppointments(String clientPhone) {
         Client client = clientRepository.findByUserPhone(clientPhone)
                 .orElseThrow(() -> new RuntimeException("Клиент не найден"));
 
-        // Используем оптимизированный метод с EntityGraph
-        return appointmentRepository.findByClientId(client.getId());
+        LocalDateTime weekAgo = LocalDateTime.now().minusDays(7);
+        return appointmentRepository.findByClientIdAndDateAfter(client.getId(), weekAgo);
     }
 
     @Transactional(readOnly = true)
@@ -82,7 +162,10 @@ public class AppointmentService {
         Client client = clientRepository.findByUserPhone(clientPhone)
                 .orElseThrow(() -> new RuntimeException("Клиент не найден"));
 
-        return appointmentRepository.findByClientIdAndStatus(client.getId(), status);
+        LocalDateTime weekAgo = LocalDateTime.now().minusDays(7);
+        return appointmentRepository.findByStatusAndDateAfter(status, weekAgo).stream()
+                .filter(a -> a.getClient().getId().equals(client.getId()))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -90,7 +173,9 @@ public class AppointmentService {
         Client client = clientRepository.findByUserPhone(clientPhone)
                 .orElseThrow(() -> new RuntimeException("Клиент не найден"));
 
-        return appointmentRepository.findByClientIdAndDate(client.getId(), date);
+        return appointmentRepository.findByDate(date).stream()
+                .filter(a -> a.getClient().getId().equals(client.getId()))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -98,16 +183,12 @@ public class AppointmentService {
         Client client = clientRepository.findByUserPhone(clientPhone)
                 .orElseThrow(() -> new RuntimeException("Клиент не найден"));
 
-        // Сначала находим запись с графом, потом проверяем принадлежность
         return appointmentRepository.findById(appointmentId)
                 .filter(a -> a.getClient().getId().equals(client.getId()));
     }
 
-    // ========== МЕТОДЫ ДЛЯ АДМИНИСТРАТОРА ==========
-
     @Transactional(readOnly = true)
     public List<Appointment> getAllAppointments() {
-        // Используем граф для загрузки всех связей
         return appointmentRepository.findAll();
     }
 
@@ -118,19 +199,21 @@ public class AppointmentService {
 
     @Transactional(readOnly = true)
     public List<Appointment> getAppointmentsByStatus(AppointmentStatus status) {
-        return appointmentRepository.findByStatus(status);
+        LocalDateTime monthAgo = LocalDateTime.now().minusDays(30);
+        return appointmentRepository.findByStatusAndDateAfter(status, monthAgo);
     }
 
     @Transactional(readOnly = true)
     public List<Appointment> getAppointmentsByDateAndStatus(LocalDate date, AppointmentStatus status) {
-        return appointmentRepository.findByDateAndStatus(date, status);
+        return appointmentRepository.findByDate(date).stream()
+                .filter(a -> a.getStatus() == status)
+                .toList();
     }
 
     // ========== МЕТОДЫ ОБНОВЛЕНИЯ ==========
 
     @Transactional
     public Appointment updateAppointmentStatus(Long appointmentId, UpdateAppointmentStatusRequest request) {
-        // Находим запись с графом
         Appointment appointment = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new RuntimeException("Запись не найдена"));
 
@@ -138,17 +221,8 @@ public class AppointmentService {
         AppointmentStatus newStatus = request.getStatus();
 
         validateStatusTransition(oldStatus, newStatus);
-
         appointment.setStatus(newStatus);
         appointment.setMasterNotes(request.getMasterNotes());
-
-        // Если запись отменена или завершена, освобождаем слот
-        if (newStatus == AppointmentStatus.CANCELLED || newStatus == AppointmentStatus.COMPLETED) {
-            WorkSlot slot = appointment.getWorkSlot();
-            slot.setStatus(SlotStatus.AVAILABLE);
-            workSlotRepository.save(slot);
-            log.info("Слот ID: {} освобожден после статуса: {}", slot.getId(), newStatus);
-        }
 
         Appointment updatedAppointment = appointmentRepository.save(appointment);
 
@@ -159,32 +233,34 @@ public class AppointmentService {
     }
 
     @Transactional
-    public Appointment rescheduleAppointment(Long appointmentId, Long newSlotId) {
+    public Appointment rescheduleAppointment(Long appointmentId, LocalDateTime newStartTime) {
         Appointment appointment = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new RuntimeException("Запись не найдена"));
 
-        WorkSlot oldSlot = appointment.getWorkSlot();
-        WorkSlot newSlot = workSlotRepository.findById(newSlotId)
-                .orElseThrow(() -> new RuntimeException("Новый слот не найден"));
+        // Проверяем доступность нового времени
+        // Для ручных записей мастера - более гибкие правила
+        boolean isManual = appointment.getIsManual() != null && appointment.getIsManual();
 
-        if (newSlot.getStatus() != SlotStatus.AVAILABLE) {
-            throw new RuntimeException("Новый слот недоступен. Статус: " + newSlot.getStatus());
+        if (isManual) {
+            if (!scheduleService.canBookMasterSlot(newStartTime,
+                    appointment.getService().getDurationMinutes())) {
+                throw new RuntimeException("Новое время уже занято");
+            }
+        } else {
+            if (!scheduleService.canBookClientSlot(newStartTime,
+                    appointment.getService().getDurationMinutes())) {
+                throw new RuntimeException("Нельзя перенести на это время. Выберите доступный слот.");
+            }
         }
 
-        // Освобождаем старый слот
-        oldSlot.setStatus(SlotStatus.AVAILABLE);
-        workSlotRepository.save(oldSlot);
+        // Обновляем время
+        appointment.setStartTime(newStartTime);
+        appointment.setEndTime(calculateEndTime(newStartTime, appointment.getService()));
 
-        // Занимаем новый слот
-        newSlot.setStatus(SlotStatus.BOOKED);
-        workSlotRepository.save(newSlot);
-
-        // Обновляем запись
-        appointment.setWorkSlot(newSlot);
         Appointment updatedAppointment = appointmentRepository.save(appointment);
 
-        log.info("Запись ID: {} перенесена со слота {} на слот {}",
-                appointmentId, oldSlot.getId(), newSlot.getId());
+        log.info("Запись ID: {} перенесена с {} на {}",
+                appointmentId, appointment.getStartTime(), newStartTime);
 
         return updatedAppointment;
     }
@@ -194,19 +270,9 @@ public class AppointmentService {
         Appointment appointment = appointmentRepository.findById(appointmentId)
                 .orElseThrow(() -> new RuntimeException("Запись не найдена"));
 
-        // Освобождаем слот если запись не отменена
-        if (appointment.getStatus() != AppointmentStatus.CANCELLED) {
-            WorkSlot slot = appointment.getWorkSlot();
-            slot.setStatus(SlotStatus.AVAILABLE);
-            workSlotRepository.save(slot);
-        }
-
         appointmentRepository.delete(appointment);
-
         log.info("Запись ID: {} удалена", appointmentId);
     }
-
-
 
     public List<Appointment> getClientAppointmentsByStatusAndDate(String clientPhone,
                                                                   AppointmentStatus status,
@@ -214,10 +280,9 @@ public class AppointmentService {
         Client client = clientRepository.findByUserPhone(clientPhone)
                 .orElseThrow(() -> new RuntimeException("Клиент не найден"));
 
-        return appointmentRepository.findAll().stream()
+        return appointmentRepository.findByDate(date).stream()
                 .filter(a -> a.getClient().getId().equals(client.getId()))
                 .filter(a -> a.getStatus() == status)
-                .filter(a -> a.getWorkSlot().getDate().equals(date))
                 .toList();
     }
 
@@ -233,12 +298,6 @@ public class AppointmentService {
         }
 
         appointment.setStatus(AppointmentStatus.CANCELLED);
-
-        // Освобождаем слот
-        WorkSlot slot = appointment.getWorkSlot();
-        slot.setStatus(SlotStatus.AVAILABLE);
-        workSlotRepository.save(slot);
-
         Appointment cancelledAppointment = appointmentRepository.save(appointment);
 
         log.info("Клиент {} отменил запись ID: {}", clientPhone, appointmentId);
@@ -282,7 +341,8 @@ public class AppointmentService {
         Client client = clientRepository.findByUserPhone(clientPhone)
                 .orElseThrow(() -> new RuntimeException("Клиент не найден"));
 
-        return appointmentRepository.findByClientId(client.getId()).stream()
+        LocalDateTime monthAgo = LocalDateTime.now().minusDays(30);
+        return appointmentRepository.findByClientIdAndDateAfter(client.getId(), monthAgo).stream()
                 .map(appointmentMapper::toResponse)
                 .toList();
     }

@@ -10,13 +10,15 @@ import java.time.LocalDateTime;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreateAppointmentRequest {
-
-    @NotNull(message = "ID услуги обязательно")
-    private Long serviceId;
+public class CreateScheduleBlockRequest {
 
     @NotNull(message = "Время начала обязательно")
-    private LocalDateTime startTime;  // вместо slotId
+    private LocalDateTime startTime;
 
-    private String clientNotes;
+    @NotNull(message = "Время окончания обязательно")
+    private LocalDateTime endTime;
+
+    private String reason;  // VACATION, PERSONAL, SICK_LEAVE
+
+    private String notes;
 }

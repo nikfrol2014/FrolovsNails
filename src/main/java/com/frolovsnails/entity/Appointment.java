@@ -15,32 +15,10 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @NamedEntityGraphs({
         @NamedEntityGraph(
-                name = "appointment.with-client-service-slot",
+                name = "appointment.with-client-service",
                 attributeNodes = {
                         @NamedAttributeNode("client"),
-                        @NamedAttributeNode("service"),
-                        @NamedAttributeNode("workSlot")
-                }
-        ),
-        @NamedEntityGraph(
-                name = "appointment.with-all-details",
-                attributeNodes = {
-                        @NamedAttributeNode("client"),
-                        @NamedAttributeNode("service"),
-                        @NamedAttributeNode("workSlot")
-                },
-                subgraphs = {
-                        @NamedSubgraph(
-                                name = "client.user",
-                                attributeNodes = @NamedAttributeNode(value = "user")
-                        )
-                }
-        ),
-        @NamedEntityGraph(
-                name = "appointment.for-client",
-                attributeNodes = {
-                        @NamedAttributeNode("service"),
-                        @NamedAttributeNode("workSlot")
+                        @NamedAttributeNode("service")
                 }
         )
 })
@@ -51,20 +29,25 @@ public class Appointment {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)  // ← LAZY!
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "client_id", nullable = false)
     @JsonIgnoreProperties({"appointments", "user"})
     private Client client;
 
-    @ManyToOne(fetch = FetchType.LAZY)  // ← LAZY!
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "service_id", nullable = false)
     @JsonIgnoreProperties({"appointments"})
     private Service service;
 
-    @ManyToOne(fetch = FetchType.LAZY)  // ← LAZY!
-    @JoinColumn(name = "slot_id", nullable = false)
-    @JsonIgnoreProperties({"appointments"})
-    private WorkSlot workSlot;
+    @Column(name = "is_manual")
+    private Boolean isManual = false; // false - запись через систему, true - ручная запись мастера
+
+    // ДОБАВЛЯЕМ startTime и endTime
+    @Column(name = "start_time", nullable = false)
+    private LocalDateTime startTime;  // Например: 2024-01-15T11:30:00
+
+    @Column(name = "end_time", nullable = false)
+    private LocalDateTime endTime;    // Вычисляем: startTime + service.duration
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -85,6 +68,7 @@ public class Appointment {
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
+        // endTime вычисляется в сервисе перед сохранением
     }
 
     @PreUpdate

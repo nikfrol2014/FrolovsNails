@@ -10,9 +10,11 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,8 +28,10 @@ public class TestController {
     private final UserRepository userRepository;
     private final ClientRepository clientRepository;
     private final ServiceRepository serviceRepository;
-    private final WorkSlotRepository workSlotRepository;
+//    private final WorkingScheduleRepository workingScheduleRepository;
+    private final ScheduleBlockRepository scheduleBlockRepository;
     private final AppointmentRepository appointmentRepository;
+    private final AvailableDayRepository availableDayRepository;
 
     @GetMapping("/health")
     @Operation(summary = "Проверка здоровья сервиса (публичный)")
@@ -109,7 +113,8 @@ public class TestController {
                 "users", userRepository.count(),
                 "clients", clientRepository.count(),
                 "services", serviceRepository.count(),
-                "work_slots", workSlotRepository.count(),
+                "workingSchedule", availableDayRepository,
+                 "scheduleBlock", scheduleBlockRepository,
                 "appointments", appointmentRepository.count()
         ));
     }
@@ -165,40 +170,57 @@ public class TestController {
         return service;
     }
 
-    @PostMapping("/create-test-slots")
-    @Operation(summary = "Создать тестовые рабочие слоты")
-    public ResponseEntity<Map<String, Object>> createTestSlots() {
+    @PostMapping("/create-test-available-days")
+    @Operation(summary = "Создать тестовые доступные дни")
+    public ResponseEntity<Map<String, Object>> createTestAvailableDays() {
         try {
-            LocalDate tomorrow = LocalDate.now().plusDays(1);
-            LocalDate dayAfterTomorrow = LocalDate.now().plusDays(2);
+            // Удаляем старые доступные дни если есть
+            availableDayRepository.deleteAll();
 
-            // Проверяем, есть ли уже слоты на эти даты
-            if (!workSlotRepository.findByDate(tomorrow).isEmpty()) {
-                return ResponseEntity.ok(Map.of(
-                        "message", "Слоты уже существуют на " + tomorrow
-                ));
+            // Создаем тестовые доступные дни на ближайшие 7 дней
+            List<AvailableDay> days = new ArrayList<>();
+            LocalDate today = LocalDate.now();
+
+            for (int i = 1; i <= 7; i++) {
+                LocalDate date = today.plusDays(i);
+
+                // Делаем выходными субботу и воскресенье
+                boolean isWeekend = date.getDayOfWeek() == DayOfWeek.SATURDAY
+                        || date.getDayOfWeek() == DayOfWeek.SUNDAY;
+
+                AvailableDay day = new AvailableDay();
+                day.setAvailableDate(date);
+                day.setWorkStart(LocalTime.of(10, 0));
+                day.setWorkEnd(LocalTime.of(19, 0));
+                day.setIsAvailable(!isWeekend);
+                day.setNotes(isWeekend ? "Выходной" : "Рабочий день");
+
+                days.add(day);
             }
 
-            // Создаем слоты на завтра
-            List<WorkSlot> slots = List.of(
-                    createSlot(tomorrow, LocalTime.of(10, 0), LocalTime.of(11, 30), SlotStatus.AVAILABLE, "Утро"),
-                    createSlot(tomorrow, LocalTime.of(12, 0), LocalTime.of(13, 30), SlotStatus.AVAILABLE, "Обед"),
-                    createSlot(tomorrow, LocalTime.of(14, 0), LocalTime.of(15, 30), SlotStatus.AVAILABLE, "День"),
-                    createSlot(tomorrow, LocalTime.of(16, 0), LocalTime.of(17, 30), SlotStatus.BLOCKED, "Встреча"),
+            availableDayRepository.saveAll(days);
 
-                    // Слоты на послезавтра
-                    createSlot(dayAfterTomorrow, LocalTime.of(9, 0), LocalTime.of(10, 30), SlotStatus.AVAILABLE, "Раннее утро"),
-                    createSlot(dayAfterTomorrow, LocalTime.of(11, 0), LocalTime.of(12, 30), SlotStatus.AVAILABLE, null),
-                    createSlot(dayAfterTomorrow, LocalTime.of(13, 0), LocalTime.of(14, 30), SlotStatus.AVAILABLE, null)
-            );
-
-            workSlotRepository.saveAll(slots);
+            // Создаем тестовую блокировку
+            ScheduleBlock block = new ScheduleBlock();
+            block.setStartTime(LocalDateTime.now().plusDays(3).withHour(14).withMinute(0));
+            block.setEndTime(LocalDateTime.now().plusDays(3).withHour(16).withMinute(0));
+            block.setReason("MEETING");
+            block.setNotes("Встреча с поставщиком");
+            block.setIsBlocked(true);
+            scheduleBlockRepository.save(block);
 
             return ResponseEntity.ok(Map.of(
-                    "message", "✅ Тестовые слоты созданы",
-                    "count", slots.size(),
-                    "dates", List.of(tomorrow, dayAfterTomorrow),
-                    "note", "Один слот заблокирован (BLOCKED) как пример"
+                    "message", "✅ Тестовые доступные дни созданы",
+                    "createdDays", days.size(),
+                    "nextWeekAvailable", days.stream()
+                            .filter(AvailableDay::getIsAvailable)
+                            .map(d -> d.getAvailableDate().toString())
+                            .toList(),
+                    "weekendDays", days.stream()
+                            .filter(d -> !d.getIsAvailable())
+                            .map(d -> d.getAvailableDate().toString())
+                            .toList(),
+                    "blockedTime", block.getStartTime().toLocalDate().toString() + " 14:00-16:00"
             ));
 
         } catch (Exception e) {
@@ -208,73 +230,49 @@ public class TestController {
         }
     }
 
-    private WorkSlot createSlot(LocalDate date, LocalTime start, LocalTime end, SlotStatus status, String notes) {
-        WorkSlot slot = new WorkSlot();
-        slot.setDate(date);
-        slot.setStartTime(start);
-        slot.setEndTime(end);
-        slot.setStatus(status);
-        slot.setMasterNotes(notes);
-        return slot;
-    }
-
     @PostMapping("/create-test-appointments")
-    @Operation(summary = "Создать тестовые записи")
+    @Operation(summary = "Создать тестовые записи (новый формат)")
     public ResponseEntity<Map<String, Object>> createTestAppointments() {
         try {
-            // Проверяем, есть ли уже записи
-            if (appointmentRepository.count() > 0) {
-                return ResponseEntity.ok(Map.of(
-                        "message", "Записи уже существуют",
-                        "count", appointmentRepository.count()
-                ));
-            }
+            // Удаляем старые записи
+            appointmentRepository.deleteAll();
 
-            // Получаем тестовых клиентов и услуги
-            Optional<Client> client1 = clientRepository.findByUserPhone("+79001112233");
-            Optional<Client> client2 = clientRepository.findByUserPhone("+79991234567");
+            // Получаем тестовых клиентов
+            Optional<Client> client1 = clientRepository.findByUserPhone("+79998887766");
+            Optional<Client> client2 = clientRepository.findByUserPhone("+79001112233");
 
             List<Service> services = serviceRepository.findAll();
-            List<WorkSlot> slots = workSlotRepository.findAll();
 
-            if (services.isEmpty() || slots.isEmpty() || (!client1.isPresent() && !client2.isPresent())) {
+            if (services.isEmpty() || (!client1.isPresent() && !client2.isPresent())) {
                 return ResponseEntity.badRequest().body(Map.of(
-                        "error", "Недостаточно данных для создания записей",
-                        "services", services.size(),
-                        "slots", slots.size(),
-                        "clients", (client1.isPresent() ? 1 : 0) + (client2.isPresent() ? 1 : 0)
+                        "error", "Недостаточно данных для создания записей"
                 ));
             }
 
-            // Создаем тестовые записи
-            List<Appointment> appointments = List.of();
+            List<Appointment> appointments = new ArrayList<>();
 
-            if (client1.isPresent() && services.size() >= 1 && slots.size() >= 1) {
+            // Запись 1: завтра в 11:00
+            if (client1.isPresent() && !services.isEmpty()) {
                 Appointment appointment1 = new Appointment();
                 appointment1.setClient(client1.get());
                 appointment1.setService(services.get(0));
-                appointment1.setWorkSlot(slots.get(0));
+                appointment1.setStartTime(LocalDateTime.now().plusDays(1).withHour(11).withMinute(0));
+                appointment1.setEndTime(appointment1.getStartTime().plusMinutes(services.get(0).getDurationMinutes()));
                 appointment1.setStatus(AppointmentStatus.CONFIRMED);
                 appointment1.setClientNotes("Тестовая запись 1");
                 appointments.add(appointment1);
-
-                // Обновляем статус слота
-                slots.get(0).setStatus(SlotStatus.BOOKED);
-                workSlotRepository.save(slots.get(0));
             }
 
-            if (client2.isPresent() && services.size() >= 2 && slots.size() >= 2) {
+            // Запись 2: послезавтра в 14:30
+            if (client2.isPresent() && services.size() >= 2) {
                 Appointment appointment2 = new Appointment();
                 appointment2.setClient(client2.get());
                 appointment2.setService(services.get(1));
-                appointment2.setWorkSlot(slots.get(1));
+                appointment2.setStartTime(LocalDateTime.now().plusDays(2).withHour(14).withMinute(30));
+                appointment2.setEndTime(appointment2.getStartTime().plusMinutes(services.get(1).getDurationMinutes()));
                 appointment2.setStatus(AppointmentStatus.PENDING);
                 appointment2.setClientNotes("Тестовая запись 2");
                 appointments.add(appointment2);
-
-                // Обновляем статус слота
-                slots.get(1).setStatus(SlotStatus.BOOKED);
-                workSlotRepository.save(slots.get(1));
             }
 
             appointmentRepository.saveAll(appointments);
@@ -282,8 +280,13 @@ public class TestController {
             return ResponseEntity.ok(Map.of(
                     "message", "✅ Тестовые записи созданы",
                     "count", appointments.size(),
-                    "statuses", appointments.stream()
-                            .map(a -> a.getStatus().toString())
+                    "appointments", appointments.stream()
+                            .map(a -> Map.of(
+                                    "id", a.getId(),
+                                    "client", a.getClient().getFirstName(),
+                                    "service", a.getService().getName(),
+                                    "time", a.getStartTime().toString()
+                            ))
                             .toList()
             ));
 

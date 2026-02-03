@@ -7,9 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 
 @Data
 @Builder
@@ -19,7 +17,8 @@ public class AppointmentResponse {
     private Long id;
     private ClientInfo client;
     private ServiceInfo service;
-    private SlotInfo slot;
+    private LocalDateTime startTime;  // ДОБАВЛЯЕМ
+    private LocalDateTime endTime;    // ДОБАВЛЯЕМ
     private AppointmentStatus status;
     private String clientNotes;
     private String masterNotes;
@@ -50,14 +49,5 @@ public class AppointmentResponse {
         private String category;
     }
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class SlotInfo {
-        private Long id;
-        private LocalDate date;
-        private LocalTime startTime;
-        private LocalTime endTime;
-    }
+    // УБИРАЕМ SlotInfo - больше не нужен
 }

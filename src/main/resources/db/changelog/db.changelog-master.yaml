@@ -8,3 +8,12 @@ databaseChangeLog:
   - include:
       file: classpath:/db/changelog/changes/003-create-slots-appointments.yaml
       relativeToChangelogFile: false
+  - include:
+      file: classpath:/db/changelog/changes/004-simple-fix.yaml
+      relativeToChangelogFile: false
+  - include:
+      file: classpath:/db/changelog/changes/005-add-manual-flag.yaml
+      relativeToChangelogFile: false
+  - include:
+      file: classpath:/db/changelog/changes/006-replace-working-schedule.yaml
+      relativeToChangelogFile: false

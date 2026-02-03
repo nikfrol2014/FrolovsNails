@@ -1,0 +1,22 @@
+# db/changelog/changes/005-add-manual-flag.yaml
+databaseChangeLog:
+  - changeSet:
+      id: 005-add-is-manual-to-appointments
+      author: frolovsnails
+      changes:
+        - addColumn:
+            tableName: appointments
+            columns:
+              - column:
+                  name: is_manual
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            tableName: appointments
+            indexName: idx_appointments_is_manual
+            columns:
+              - column:
+                  name: is_manual
