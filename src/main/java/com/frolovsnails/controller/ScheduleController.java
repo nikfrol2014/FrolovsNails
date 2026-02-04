@@ -1,5 +1,6 @@
 package com.frolovsnails.controller;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.frolovsnails.dto.request.CreateScheduleBlockRequest;
 import com.frolovsnails.dto.response.ApiResponse;
 import com.frolovsnails.entity.AvailableDay;
@@ -8,6 +9,7 @@ import com.frolovsnails.repository.AvailableDayRepository;
 import com.frolovsnails.repository.ScheduleBlockRepository;
 import com.frolovsnails.service.ScheduleService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -91,13 +93,13 @@ public class ScheduleController {
 
     // ========== АДМИН ЭНДПОИНТЫ (для мастера) ==========
 
-    @PostMapping("/available-days")
+    @PostMapping("/available-days") //todo: какая-то хуйня с датой из сваггера //fix: добавление Schema решило проблему
     @Operation(summary = "Добавить доступный день (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> addAvailableDay(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestParam @DateTimeFormat(pattern = "HH:mm") LocalTime workStart,
-            @RequestParam @DateTimeFormat(pattern = "HH:mm") LocalTime workEnd,
+            @RequestParam @DateTimeFormat(pattern = "HH:mm") @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "08:00") LocalTime workStart,
+            @RequestParam @DateTimeFormat(pattern = "HH:mm") @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "15:00") LocalTime workEnd,
             @RequestParam(required = false) String notes) {
 
         try {
