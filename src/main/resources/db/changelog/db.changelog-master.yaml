@@ -17,3 +17,6 @@ databaseChangeLog:
   - include:
       file: classpath:/db/changelog/changes/006-replace-working-schedule.yaml
       relativeToChangelogFile: false
+  - include:
+      file: classpath:/db/changelog/changes/009-drop-slot-id.yaml
+      relativeToChangelogFile: false

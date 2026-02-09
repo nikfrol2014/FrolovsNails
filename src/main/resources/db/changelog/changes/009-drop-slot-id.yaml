@@ -1,0 +1,36 @@
+# db/changelog/changes/009-drop-slot-id.yaml
+databaseChangeLog:
+  - changeSet:
+      id: 009-1-drop-slot-foreign-key
+      author: frolovsnails
+      preConditions:
+        - foreignKeyConstraintExists:
+            foreignKeyName: fk_appointments_slot_id
+            tableName: appointments
+      changes:
+        - dropForeignKeyConstraint:
+            baseTableName: appointments
+            constraintName: fk_appointments_slot_id
+
+  - changeSet:
+      id: 009-2-drop-slot-id-column
+      author: frolovsnails
+      preConditions:
+        - columnExists:
+            tableName: appointments
+            columnName: slot_id
+      changes:
+        - dropColumn:
+            tableName: appointments
+            columnName: slot_id
+
+  - changeSet:
+      id: 009-3-drop-work-slots-table
+      author: frolovsnails
+      preConditions:
+        - tableExists:
+            tableName: work_slots
+      changes:
+        - dropTable:
+            tableName: work_slots
+            cascadeConstraints: true
