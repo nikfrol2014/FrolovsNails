@@ -5,8 +5,10 @@ import com.frolovsnails.dto.request.CreateScheduleBlockRequest;
 import com.frolovsnails.dto.response.ApiResponse;
 import com.frolovsnails.entity.AvailableDay;
 import com.frolovsnails.entity.ScheduleBlock;
+import com.frolovsnails.entity.Service;
 import com.frolovsnails.repository.AvailableDayRepository;
 import com.frolovsnails.repository.ScheduleBlockRepository;
+import com.frolovsnails.repository.ServiceRepository;
 import com.frolovsnails.service.ScheduleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -23,6 +25,8 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/api/schedule")
@@ -33,6 +37,7 @@ public class ScheduleController {
     private final ScheduleService scheduleService;
     private final AvailableDayRepository availableDayRepository;
     private final ScheduleBlockRepository scheduleBlockRepository;
+    private final ServiceRepository serviceRepository;
 
     // ========== ПУБЛИЧНЫЕ ЭНДПОИНТЫ (для клиентов) ==========
 
@@ -72,6 +77,14 @@ public class ScheduleController {
             // Для теста: предполагаем длительность 60 минут
             int durationMinutes = 60;
 
+            // todo: REMAKE -->
+            Optional<Service> service = serviceRepository.findById(serviceId);
+            durationMinutes = service.get().getDurationMinutes() != null ? service.get().getDurationMinutes() : 60;
+
+            String duratationAtString = (double)(durationMinutes/60) + " часа";
+
+            // todo: END
+
             List<LocalDateTime> availableSlots = scheduleService.getAvailableSlotsForClients(date, durationMinutes);
 
             return ResponseEntity.ok(ApiResponse.success(
@@ -80,7 +93,7 @@ public class ScheduleController {
                             "date", date,
                             "availableSlots", availableSlots,
                             "count", availableSlots.size(),
-                            "slotDuration", "2.5 часа",
+                            "slotDuration", duratationAtString,
                             "note", "Запись возможна только в указанные времена"
                     )
             ));
