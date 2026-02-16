@@ -308,11 +308,11 @@ public class TestController {
         ExecutorService executor = Executors.newFixedThreadPool(2);
 
         Callable<Appointment> task1 = () ->
-                appointmentService.createClientAppointment("+79161234567",
+                appointmentService.createClientAppointment("12345",
                         new CreateAppointmentRequest(1L, LocalDateTime.now().plusDays(1).withHour(15), ""));
 
         Callable<Appointment> task2 = () ->
-                appointmentService.createClientAppointment("+79167654321",
+                appointmentService.createClientAppointment("123456",
                         new CreateAppointmentRequest(1L, LocalDateTime.now().plusDays(1).withHour(15), ""));
 
         Future<Appointment> future1 = executor.submit(task1);
