@@ -301,6 +301,7 @@ public class TestController {
         }
     }
 
+    @Operation(summary = "тестирование двойной записи на одно время")
     @GetMapping("/test/race-condition")
     public String testRaceCondition() {
         // Эмуляция двух одновременных запросов
