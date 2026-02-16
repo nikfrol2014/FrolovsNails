@@ -1,7 +1,9 @@
 package com.frolovsnails.controller;
 
+import com.frolovsnails.dto.request.CreateAppointmentRequest;
 import com.frolovsnails.entity.*;
 import com.frolovsnails.repository.*;
+import com.frolovsnails.service.AppointmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.*;
 
 @RestController
 @RequestMapping("/api/test")
@@ -32,6 +35,7 @@ public class TestController {
     private final ScheduleBlockRepository scheduleBlockRepository;
     private final AppointmentRepository appointmentRepository;
     private final AvailableDayRepository availableDayRepository;
+    private final AppointmentService appointmentService;
 
     @GetMapping("/health")
     @Operation(summary = "Проверка здоровья сервиса (публичный)")
@@ -294,6 +298,31 @@ public class TestController {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", e.getMessage()
             ));
+        }
+    }
+
+    @GetMapping("/test/race-condition")
+    public String testRaceCondition() {
+        // Эмуляция двух одновременных запросов
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        Callable<Appointment> task1 = () ->
+                appointmentService.createClientAppointment("+79161234567",
+                        new CreateAppointmentRequest(1L, LocalDateTime.now().plusDays(1).withHour(15), ""));
+
+        Callable<Appointment> task2 = () ->
+                appointmentService.createClientAppointment("+79167654321",
+                        new CreateAppointmentRequest(1L, LocalDateTime.now().plusDays(1).withHour(15), ""));
+
+        Future<Appointment> future1 = executor.submit(task1);
+        Future<Appointment> future2 = executor.submit(task2);
+
+        try {
+            Appointment result1 = future1.get(1, TimeUnit.SECONDS);
+            Appointment result2 = future2.get(1, TimeUnit.SECONDS);
+            return "Обе записи созданы? Должна была упасть одна!";
+        } catch (Exception e) {
+            return "Одна запись упала с ошибкой: " + e.getMessage(); // Это ожидаемо
         }
     }
 }
