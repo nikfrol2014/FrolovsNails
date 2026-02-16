@@ -103,7 +103,7 @@ public class AppointmentController {
             ));
         } catch (DataIntegrityViolationException e) {
             if (e.getMessage().contains("idx_unique_active_appointment_time")) {
-                return ResponseEntity.badRequest().body(
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(
                         ApiResponse.error("Это время только что заняли. Выберите другое время.")
                 );
             }

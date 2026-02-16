@@ -9,6 +9,7 @@ import com.frolovsnails.mapper.AppointmentMapper;
 import com.frolovsnails.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -33,28 +34,38 @@ public class AppointmentService {
 
     @Transactional
     public Appointment createClientAppointment(String clientPhone, CreateAppointmentRequest request) {
-        // 1. Находим клиента
-        Client client = clientRepository.findByUserPhone(clientPhone)
-                .orElseThrow(() -> new RuntimeException("Клиент не найден"));
+        try {
+            // 1. Находим клиента
+            Client client = clientRepository.findByUserPhone(clientPhone)
+                    .orElseThrow(() -> new RuntimeException("Клиент не найден"));
 
-        // 2. Проверяем услугу
-        Service service = serviceRepository.findById(request.getServiceId())
-                .filter(Service::getIsActive)
-                .orElseThrow(() -> new RuntimeException("Услуга не найдена или неактивна"));
+            // 2. Проверяем услугу
+            Service service = serviceRepository.findById(request.getServiceId())
+                    .filter(Service::getIsActive)
+                    .orElseThrow(() -> new RuntimeException("Услуга не найдена или неактивна"));
 
-        // 3. Проверяем, что время соответствует правилам для клиентов
-        if (!scheduleService.canBookClientSlot(request.getStartTime(), service.getDurationMinutes())) {
-            throw new RuntimeException("Невозможно записаться на это время. Выберите доступный слот.");
+            // 3. Проверяем, что время соответствует правилам для клиентов
+            if (!scheduleService.canBookClientSlot(request.getStartTime(), service.getDurationMinutes())) {
+                throw new RuntimeException("Невозможно записаться на это время. Выберите доступный слот.");
+            }
+
+            // 4. Создаем запись (isManual = false)
+            Appointment appointment = createAppointment(client, service, request.getStartTime(),
+                    request.getClientNotes(), false);
+
+            log.info("Клиент {} записался на услугу {} в {}",
+                    clientPhone, service.getName(), request.getStartTime());
+
+            return appointment;
+        } catch (DataIntegrityViolationException e) {
+            // Проверяем, что это именно наш индекс
+            if (e.getMessage() != null && e.getMessage().contains("idx_unique_active_appointment_time")) {
+                log.warn("Попытка двойной записи на время: {} от клиента: {}",
+                        request.getStartTime(), clientPhone);
+                throw new RuntimeException("Это время только что заняли. Пожалуйста, выберите другое время.");
+            }
+            throw e;
         }
-
-        // 4. Создаем запись (isManual = false)
-        Appointment appointment = createAppointment(client, service, request.getStartTime(),
-                request.getClientNotes(), false);
-
-        log.info("Клиент {} записался на услугу {} в {}",
-                clientPhone, service.getName(), request.getStartTime());
-
-        return appointment;
     }
 
     // ========== ДЛЯ МАСТЕРА ==========
