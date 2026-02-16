@@ -18,7 +18,7 @@ public class DateTimeUtils {
 
     // Для API ответов (без миллисекунд)
     private static final DateTimeFormatter ISO_FORMATTER =
-            DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm");
+            DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm"); 
 
     /**
      * Получить текущее время в Москве
