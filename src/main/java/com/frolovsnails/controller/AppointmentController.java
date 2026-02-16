@@ -49,7 +49,7 @@ public class AppointmentController {
     @Operation(summary = "Получить доступные слоты для записи (для клиентов)")
     @PreAuthorize("hasRole('CLIENT')")
     public ResponseEntity<ApiResponse> getClientAvailableSlots(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam LocalDate date,
             @RequestParam Long serviceId) {
 
         try {
@@ -120,7 +120,7 @@ public class AppointmentController {
     @PreAuthorize("hasRole('CLIENT')")
     public ResponseEntity<ApiResponse> getMyAppointments(
             @RequestParam(required = false) AppointmentStatus status,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+            @RequestParam(required = false) LocalDate date) {
 
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         String phone = auth.getName();
@@ -193,7 +193,7 @@ public class AppointmentController {
     @Operation(summary = "Получить свободное время для ручной записи (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getMasterAvailableTime(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam LocalDate date,
             @RequestParam(required = false, defaultValue = "30") Integer minDuration) {
 
         try {
@@ -259,7 +259,7 @@ public class AppointmentController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getAllAppointments(
             @RequestParam(required = false) AppointmentStatus status,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) LocalDate date,
             @RequestParam(required = false) Long clientId) {
 
         List<Appointment> appointments;
@@ -355,7 +355,7 @@ public class AppointmentController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> rescheduleAppointment(
             @PathVariable Long id,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime newStartTime) {
+            @RequestParam LocalDateTime newStartTime) {
 
         try {
             Appointment appointment = appointmentService.rescheduleAppointment(id, newStartTime);
@@ -393,8 +393,8 @@ public class AppointmentController {
     @Operation(summary = "Статистика записей по дням (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getDailyStats(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
 
         // Простая реализация - можно улучшить
         List<Appointment> allAppointments = appointmentRepository.findAll();

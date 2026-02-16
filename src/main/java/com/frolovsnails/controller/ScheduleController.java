@@ -67,7 +67,7 @@ public class ScheduleController {
     @GetMapping("/availability")
     @Operation(summary = "Получить доступные слоты на конкретную дату (публичный)")
     public ResponseEntity<ApiResponse> getAvailableSlots(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam LocalDate date,
             @RequestParam Long serviceId) {
 
         try {
@@ -133,8 +133,8 @@ public class ScheduleController {
     @Operation(summary = "Получить все дни расписания (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getAllAvailableDays(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate) {
 
         try {
             List<AvailableDay> days;
@@ -204,7 +204,7 @@ public class ScheduleController {
     @Operation(summary = "Получить свободное время для ручной записи (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getMasterAvailableTime(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam LocalDate date,
             @RequestParam(required = false, defaultValue = "30") Integer minDuration) {
 
         try {
@@ -261,8 +261,8 @@ public class ScheduleController {
     @Operation(summary = "Получить все блокировки времени (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getScheduleBlocks(
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate) {
 
         List<ScheduleBlock> blocks;
 
