@@ -77,6 +77,8 @@ springdoc:
   show-actuator: true
 
 app:
+  schedule:
+    client-slot-minutes: 150  # 2.5 часа в минутах
   security:
     jwt:
       secret-key: "404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970" # 256-bit key

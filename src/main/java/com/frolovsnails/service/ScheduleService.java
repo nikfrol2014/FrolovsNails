@@ -1,5 +1,6 @@
 package com.frolovsnails.service;
 
+import com.frolovsnails.config.ScheduleConfig;
 import com.frolovsnails.entity.Appointment;
 import com.frolovsnails.entity.AvailableDay;
 import com.frolovsnails.entity.ScheduleBlock;
@@ -28,6 +29,8 @@ public class ScheduleService {
     private final ScheduleBlockRepository scheduleBlockRepository;
     private final AppointmentRepository appointmentRepository;
 
+    private final ScheduleConfig scheduleConfig;
+
     // ========== ПУБЛИЧНЫЕ МЕТОДЫ (для клиентов) ==========
 
     /**
@@ -46,6 +49,9 @@ public class ScheduleService {
         // 3. Генерируем слоты с шагом 2.5 часа от workStart
         LocalDateTime currentSlot = LocalDateTime.of(date, availableDay.getWorkStart());
         LocalDateTime workEnd = LocalDateTime.of(date, availableDay.getWorkEnd());
+
+        int slotStep = scheduleConfig.getClientSlotMinutes(); // 150 минут из конфига
+        currentSlot = currentSlot.plusMinutes(slotStep);
 
         List<LocalDateTime> availableSlots = new ArrayList<>();
 
@@ -273,8 +279,9 @@ public class ScheduleService {
         // Проверяем, что время соответствует шагу 2.5 часа от начала рабочего дня
         int totalMinutes = localTime.getHour() * 60 + localTime.getMinute();
         int startMinutes = workStart.getHour() * 60 + workStart.getMinute();
+        int slotStep = scheduleConfig.getClientSlotMinutes();
 
-        return (totalMinutes - startMinutes) % 150 == 0; // 150 минут = 2.5 часа
+        return (totalMinutes - startMinutes) % slotStep == 0; // 150 минут = 2.5 часа
     }
 
     private boolean isTimeBlocked(LocalDateTime start, LocalDateTime end, List<ScheduleBlock> blocks) {
