@@ -243,13 +243,13 @@ public class TestController {
 
             // Получаем тестовых клиентов
             Optional<Client> client1 = clientRepository.findByUserPhone("12345");
-            Optional<Client> client2 = clientRepository.findByUserPhone("+79161234567");
+            Optional<Client> client2 = clientRepository.findByUserPhone("123456");
 
             List<Service> services = serviceRepository.findAll();
 
             if (services.isEmpty() || (!client1.isPresent() && !client2.isPresent())) {
                 return ResponseEntity.badRequest().body(Map.of(
-                        "error", "Недостаточно данных для создания записей"
+                        "error", "Недостаточно данных для создания записей, или тут захардкожен номер телефона, а владельца его уже нет ))))"
                 ));
             }
 
