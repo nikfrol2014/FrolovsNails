@@ -42,6 +42,10 @@ public class Appointment {
     @Column(name = "is_manual")
     private Boolean isManual = false; // false - запись через систему, true - ручная запись мастера
 
+    @Version
+    @Column(name = "version")
+    private Long version;
+
     // ДОБАВЛЯЕМ startTime и endTime
     @Column(name = "start_time", nullable = false)
     private LocalDateTime startTime;  // Например: 2024-01-15T11:30:00

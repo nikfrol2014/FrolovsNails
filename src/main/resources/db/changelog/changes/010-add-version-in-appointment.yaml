@@ -1,0 +1,22 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1771239567736-2
+      author: user
+      objectQuotingStrategy: QUOTE_ONLY_RESERVED_WORDS
+      changes:
+        - addColumn:
+            columns:
+              - column:
+                  name: version
+                  type: BIGINT
+            tableName: appointments
+  - changeSet:
+      id: 1771239567736-1
+      author: user
+      objectQuotingStrategy: QUOTE_ONLY_RESERVED_WORDS
+      changes:
+        - dropNotNullConstraint:
+            columnDataType: boolean
+            columnName: is_manual
+            tableName: appointments
+
