@@ -1,6 +1,7 @@
 package com.frolovsnails.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.frolovsnails.util.DateTimeUtils;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -71,12 +72,12 @@ public class Appointment {
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        createdAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
         // endTime вычисляется в сервисе перед сохранением
     }
 
     @PreUpdate
     protected void onUpdate() {
-        updatedAt = LocalDateTime.now();
+        updatedAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
     }
 }

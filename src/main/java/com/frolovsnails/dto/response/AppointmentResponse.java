@@ -1,5 +1,6 @@
 package com.frolovsnails.dto.response;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.frolovsnails.entity.AppointmentStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -17,7 +18,9 @@ public class AppointmentResponse {
     private Long id;
     private ClientInfo client;
     private ServiceInfo service;
+    @JsonFormat(pattern = "dd-MM-yyyy HH:mm")
     private LocalDateTime startTime;  // ДОБАВЛЯЕМ
+    @JsonFormat(pattern = "dd-MM-yyyy HH:mm")
     private LocalDateTime endTime;    // ДОБАВЛЯЕМ
     private AppointmentStatus status;
     private String clientNotes;

@@ -1,4 +1,11 @@
 spring:
+  jackson:
+    date-format: dd-MM-yyyy HH:mm
+    time-zone: Europe/Moscow
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      adjust-dates-to-context-time-zone: true
   application:
     name: FrolovsNails
 
