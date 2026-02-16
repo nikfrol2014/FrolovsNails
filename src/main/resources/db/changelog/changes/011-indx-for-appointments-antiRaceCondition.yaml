@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      changes:
+        - createIndex:
+            tableName: appointments
+            indexName: idx_unique_active_appointment_time
+            unique: true
+            columns:
+              - column:
+                  name: start_time
+            where: "status NOT IN ('CANCELLED', 'COMPLETED')"
+            # Для PostgreSQL
+            clauses: "WHERE status NOT IN ('CANCELLED', 'COMPLETED')"
+      id: 011-indx-for-appointments-antiRaceCondition
+      author: nikfrol2014

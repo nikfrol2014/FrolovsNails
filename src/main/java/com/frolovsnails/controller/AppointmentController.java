@@ -16,6 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -100,6 +101,13 @@ public class AppointmentController {
                             "note", "Запись создана через систему"
                     )
             ));
+        } catch (DataIntegrityViolationException e) {
+            if (e.getMessage().contains("idx_unique_active_appointment_time")) {
+                return ResponseEntity.badRequest().body(
+                        ApiResponse.error("Это время только что заняли. Выберите другое время.")
+                );
+            }
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(
                     ApiResponse.error("❌ Ошибка создания записи: " + e.getMessage())
@@ -230,6 +238,13 @@ public class AppointmentController {
                             "note", "Запись создана мастером вручную"
                     )
             ));
+        } catch (DataIntegrityViolationException e) {
+            if (e.getMessage().contains("idx_unique_active_appointment_time")) {
+                return ResponseEntity.badRequest().body(
+                        ApiResponse.error("Это время только что заняли. Выберите другое время.")
+                );
+            }
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(
                     ApiResponse.error("❌ Ошибка создания ручной записи: " + e.getMessage())
