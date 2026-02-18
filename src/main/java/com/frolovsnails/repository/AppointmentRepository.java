@@ -25,7 +25,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
 
     @Override
     @EntityGraph(value = "appointment.with-client-service")
-    Optional<Appointment> findById(Long id);
+    Optional<Appointment> findById(@Param("id") Long id);
 
     // Методы для проверки пересечений
     @Query("SELECT COUNT(a) > 0 FROM Appointment a WHERE " +

@@ -1,6 +1,7 @@
 package com.frolovsnails.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.frolovsnails.dto.annotation.MoscowDateTime;
 import com.frolovsnails.util.DateTimeUtils;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -49,9 +50,11 @@ public class Appointment {
 
     // ДОБАВЛЯЕМ startTime и endTime
     @Column(name = "start_time", nullable = false)
+    @MoscowDateTime
     private LocalDateTime startTime;  // Например: 2024-01-15T11:30:00
 
     @Column(name = "end_time", nullable = false)
+    @MoscowDateTime
     private LocalDateTime endTime;    // Вычисляем: startTime + service.duration
 
     @Enumerated(EnumType.STRING)
@@ -65,9 +68,11 @@ public class Appointment {
     private String masterNotes;
 
     @Column(name = "created_at", nullable = false)
+    @MoscowDateTime
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
+    @MoscowDateTime
     private LocalDateTime updatedAt;
 
     @PrePersist

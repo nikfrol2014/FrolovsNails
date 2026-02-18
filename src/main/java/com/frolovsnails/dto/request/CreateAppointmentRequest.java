@@ -1,6 +1,7 @@
 package com.frolovsnails.dto.request;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.frolovsnails.dto.annotation.MoscowDateTime;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -17,7 +18,7 @@ public class CreateAppointmentRequest {
     private Long serviceId;
 
     @NotNull(message = "Время начала обязательно")
-    @JsonFormat(pattern = "dd-MM-yyyy HH:mm")
+    @MoscowDateTime
     private LocalDateTime startTime;  // вместо slotId
 
     private String clientNotes;

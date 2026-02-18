@@ -111,8 +111,8 @@ public class ScheduleController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> addAvailableDay(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestParam @DateTimeFormat(pattern = "HH:mm") @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "08:00") LocalTime workStart,
-            @RequestParam @DateTimeFormat(pattern = "HH:mm") @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "15:00") LocalTime workEnd,
+            @RequestParam @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "08:00") LocalTime workStart,
+            @RequestParam @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "15:00") LocalTime workEnd,
             @RequestParam(required = false) String notes) {
 
         try {
@@ -167,8 +167,8 @@ public class ScheduleController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> updateAvailableDay(
             @PathVariable Long id,
-            @RequestParam @DateTimeFormat(pattern = "HH:mm") LocalTime workStart,
-            @RequestParam @DateTimeFormat(pattern = "HH:mm") LocalTime workEnd,
+            @RequestParam LocalTime workStart,
+            @RequestParam LocalTime workEnd,
             @RequestParam Boolean isAvailable,
             @RequestParam(required = false) String notes) {
 

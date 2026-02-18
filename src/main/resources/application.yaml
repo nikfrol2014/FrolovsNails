@@ -1,13 +1,19 @@
 spring:
   jackson:
-    date-format: dd-MM-yyyy HH:mm
+    date-format: dd.MM.yyyy HH:mm
     time-zone: Europe/Moscow
     serialization:
       write-dates-as-timestamps: false
     deserialization:
       adjust-dates-to-context-time-zone: true
+      fail-on-unknown-properties: false
   application:
     name: FrolovsNails
+  mvc:
+    format:
+      date: dd.MM.yyyy
+      date-time: dd.MM.yyyy HH:mm
+      time: HH:mm
 
   # Конфигурация PostgreSQL
   datasource:

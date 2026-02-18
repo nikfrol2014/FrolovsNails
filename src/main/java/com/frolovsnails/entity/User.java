@@ -1,6 +1,7 @@
 package com.frolovsnails.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.frolovsnails.dto.annotation.MoscowDateTime;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -31,6 +32,7 @@ public class User {
     private Role role;
 
     @Column(name = "created_at", nullable = false)
+    @MoscowDateTime
     private LocalDateTime createdAt;
 
     @Column(nullable = false)

@@ -1,6 +1,7 @@
 package com.frolovsnails.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.frolovsnails.dto.annotation.MoscowDate;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -32,12 +33,14 @@ public class Client {
     private String lastName;
 
     @Column(name = "birth_date")
+    @MoscowDate
     private LocalDate birthDate;
 
     @Column(columnDefinition = "TEXT")
     private String notes;
 
     @Column(name = "created_at", nullable = false)
+    @MoscowDate
     private LocalDate createdAt;
 
     @PrePersist

@@ -1,5 +1,6 @@
 package com.frolovsnails.controller;
 
+import com.frolovsnails.dto.annotation.MoscowDateTime;
 import com.frolovsnails.dto.request.CreateAppointmentRequest;
 import com.frolovsnails.dto.request.CreateMasterAppointmentRequest;
 import com.frolovsnails.dto.request.UpdateAppointmentStatusRequest;

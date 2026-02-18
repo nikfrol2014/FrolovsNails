@@ -1,5 +1,6 @@
 package com.frolovsnails.entity;
 
+import com.frolovsnails.dto.annotation.MoscowDateTime;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -18,9 +19,11 @@ public class ScheduleBlock {
     private Long id;
 
     @Column(name = "start_time", nullable = false)
+    @MoscowDateTime
     private LocalDateTime startTime;
 
     @Column(name = "end_time", nullable = false)
+    @MoscowDateTime
     private LocalDateTime endTime;
 
     @Column(name = "reason")
