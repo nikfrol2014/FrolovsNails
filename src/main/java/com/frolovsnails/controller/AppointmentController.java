@@ -6,9 +6,11 @@ import com.frolovsnails.dto.request.CreateMasterAppointmentRequest;
 import com.frolovsnails.dto.request.UpdateAppointmentStatusRequest;
 import com.frolovsnails.dto.response.ApiResponse;
 import com.frolovsnails.dto.response.AppointmentResponse;
+import com.frolovsnails.dto.response.TimelineResponse;
 import com.frolovsnails.entity.*;
 import com.frolovsnails.mapper.AppointmentMapper;
 import com.frolovsnails.repository.AppointmentRepository;
+import com.frolovsnails.repository.AvailableDayRepository;
 import com.frolovsnails.repository.ServiceRepository;
 import com.frolovsnails.repository.UserRepository;
 import com.frolovsnails.service.AppointmentService;
@@ -30,8 +32,10 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/appointments")
@@ -45,6 +49,7 @@ public class AppointmentController {
     private final AppointmentRepository appointmentRepository;
     private final AppointmentMapper appointmentMapper;
     private final UserRepository userRepository;
+    private final AvailableDayRepository availableDayRepository;
 
     // ========== КЛИЕНТСКИЕ ЭНДПОИНТЫ ==========
 
@@ -451,5 +456,95 @@ public class AppointmentController {
                     );
                 })
                 .orElse(ResponseEntity.notFound().build());
+    }
+
+
+    @GetMapping("/timeline")
+    @Operation(summary = "Получить записи за период (для ленты)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> getTimeline(
+            @RequestParam @DateTimeFormat(pattern = "dd.MM.yyyy") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "dd.MM.yyyy") LocalDate endDate,
+            @RequestParam(required = false) AppointmentStatus status,
+            @RequestParam(defaultValue = "7") int daysCount) {
+
+        // Если endDate не указан, берем startDate + daysCount
+        if (endDate == null) {
+            endDate = startDate.plusDays(daysCount - 1);
+        }
+
+        // Валидация
+        if (startDate.isAfter(endDate)) {
+            throw new RuntimeException("Дата начала не может быть позже даты окончания");
+        }
+
+        if (daysCount > 60) {
+            throw new RuntimeException("Нельзя запросить больше 60 дней за раз");
+        }
+
+        // Получаем записи
+        List<Appointment> appointments = appointmentRepository.findByDateRangeSimple(startDate, endDate);
+
+        // Фильтруем по статусу, если нужно
+        if (status != null) {
+            appointments = appointments.stream()
+                    .filter(a -> a.getStatus() == status)
+                    .toList();
+        }
+
+        // Группируем по дням
+        Map<LocalDate, List<AppointmentResponse>> grouped = appointments.stream()
+                .collect(Collectors.groupingBy(
+                        a -> a.getStartTime().toLocalDate(),
+                        Collectors.mapping(appointmentMapper::toResponse, Collectors.toList())
+                ));
+
+        // Добавляем пустые дни, чтобы фронт знал о них
+        for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+            grouped.putIfAbsent(date, List.of());
+        }
+
+        // Статистика
+        TimelineResponse.TimelineStats stats = TimelineResponse.TimelineStats.builder()
+                .confirmedCount(appointments.stream().filter(a -> a.getStatus() == AppointmentStatus.CONFIRMED).count())
+                .pendingCount(appointments.stream().filter(a -> a.getStatus() == AppointmentStatus.PENDING || a.getStatus() == AppointmentStatus.CREATED).count())
+                .cancelledCount(appointments.stream().filter(a -> a.getStatus() == AppointmentStatus.CANCELLED).count())
+                .completedCount(appointments.stream().filter(a -> a.getStatus() == AppointmentStatus.COMPLETED).count())
+                .createdCount(appointments.stream().filter(a -> a.getStatus() == AppointmentStatus.CREATED).count())
+                .workingDaysCount(getWorkingDaysCount(startDate, endDate))
+                .daysWithAppointments((int) grouped.values().stream().filter(list -> !list.isEmpty()).count())
+                .build();
+
+        TimelineResponse response = TimelineResponse.builder()
+                .startDate(startDate)
+                .endDate(endDate)
+                .totalDays((int) ChronoUnit.DAYS.between(startDate, endDate) + 1)
+                .totalAppointments(appointments.size())
+                .appointmentsByDay(grouped)
+                .stats(stats)
+                .build();
+
+        return ResponseEntity.ok(ApiResponse.success("Лента загружена", response));
+    }
+
+    // Вспомогательный метод для подсчета рабочих дней
+    private int getWorkingDaysCount(LocalDate startDate, LocalDate endDate) {
+        List<AvailableDay> workingDays = availableDayRepository
+                .findByAvailableDateBetweenAndIsAvailableTrue(startDate, endDate);
+        return workingDays.size();
+    }
+
+    @GetMapping("/timeline/paginated")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> getTimelinePaginated(
+            @RequestParam @DateTimeFormat(pattern = "dd.MM.yyyy") LocalDate startDate,
+            @RequestParam(defaultValue = "7") int daysCount,
+            @RequestParam(defaultValue = "0") int page) {
+
+        // Сдвигаем начало в зависимости от страницы
+        LocalDate adjustedStart = startDate.plusDays(page * daysCount);
+        LocalDate adjustedEnd = adjustedStart.plusDays(daysCount - 1);
+
+        return getTimeline(adjustedStart, adjustedEnd, null, daysCount);
     }
 }

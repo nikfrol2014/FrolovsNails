@@ -25,4 +25,11 @@ public interface AvailableDayRepository extends JpaRepository<AvailableDay, Long
 
     @Query("SELECT ad FROM AvailableDay ad WHERE ad.availableDate >= :startDate AND ad.isAvailable = true ORDER BY ad.availableDate")
     List<AvailableDay> findAvailableDaysFromDate(@Param("startDate") LocalDate startDate);
+
+    @Query("SELECT ad.availableDate FROM AvailableDay ad " +
+            "WHERE ad.availableDate BETWEEN :startDate AND :endDate " +
+            "AND ad.isAvailable = true")
+    List<LocalDate> findWorkingDatesInRange(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
 }

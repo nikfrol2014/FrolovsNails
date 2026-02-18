@@ -60,4 +60,28 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             "ORDER BY a.startTime")
     List<Appointment> findByStatusAndDateAfter(@Param("status") AppointmentStatus status,
                                                @Param("startDate") LocalDateTime startDate);
+
+    @Query("SELECT a FROM Appointment a WHERE " +
+            "a.startTime >= :startDateTime AND a.startTime < :endDateTime " +
+            "ORDER BY a.startTime")
+    List<Appointment> findByDateRange(
+            @Param("startDateTime") LocalDateTime startDateTime,
+            @Param("endDateTime") LocalDateTime endDateTime);
+
+    @Query("SELECT a FROM Appointment a WHERE " +
+            "DATE(a.startTime) BETWEEN :startDate AND :endDate " +
+            "ORDER BY a.startTime")
+    List<Appointment> findByDateRangeSimple(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
+    // С фильтром по статусу
+    @Query("SELECT a FROM Appointment a WHERE " +
+            "DATE(a.startTime) BETWEEN :startDate AND :endDate " +
+            "AND (:status IS NULL OR a.status = :status) " +
+            "ORDER BY a.startTime")
+    List<Appointment> findByDateRangeWithStatus(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            @Param("status") AppointmentStatus status);
 }

@@ -1,7 +1,9 @@
 const CalendarApp = {
-    currentDate: new Date().toISOString().split('T')[0],
+    currentStartDate: new Date().toISOString().split('T')[0], // Начальная дата ленты
+    daysCount: 7, // Сколько дней показывать
+    timelineData: null,
     appointments: [],
-    availableDay: null,
+    availableDays: [],
     blocks: [],
 
     init: function() {
@@ -14,7 +16,7 @@ const CalendarApp = {
         if (!token) {
             this.showLoginForm();
         } else {
-            this.loadData();
+            this.loadTimeline();
         }
     },
 
@@ -52,7 +54,7 @@ const CalendarApp = {
                         role: data.data.role,
                         firstName: data.data.firstName
                     }));
-                    this.loadData();
+                    this.loadTimeline();
                 } else {
                     errorDiv.textContent = 'Ошибка входа: ' + data.message;
                 }
@@ -68,88 +70,93 @@ const CalendarApp = {
         this.showLoginForm();
     },
 
-    loadData: function() {
+    loadTimeline: function() {
         this.showLoading();
-        Promise.all([
-            this.loadSchedule(),
-            this.loadAppointments(),
-            this.loadBlocks()
-        ]).then(() => {
-            this.render();
-        }).catch(error => {
-            if (error.status === 401 || error.status === 403) {
-                this.logout();
-            } else {
-                this.showError(error.message);
+
+        const formattedDate = this.formatDateForApi(this.currentStartDate);
+        const url = `/api/appointments/timeline?startDate=${formattedDate}&daysCount=${this.daysCount}`;
+
+        fetch(url, {
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
             }
-        });
+        })
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 401 || response.status === 403) {
+                        this.logout();
+                        throw new Error('Авторизация не пройдена');
+                    }
+                    throw new Error('Ошибка загрузки: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    this.timelineData = data.data;
+                    // Дополнительно загружаем рабочие дни и блокировки для этого периода
+                    return this.loadAdditionalData();
+                } else {
+                    throw new Error(data.message);
+                }
+            })
+            .then(() => {
+                this.render();
+            })
+            .catch(error => {
+                this.showError(error.message);
+            });
+    },
+
+    loadAdditionalData: function() {
+        if (!this.timelineData) return Promise.resolve();
+
+        const startDate = this.formatDateForApi(this.timelineData.startDate);
+        const endDate = this.formatDateForApi(this.timelineData.endDate);
+
+        // Загружаем рабочие дни за период
+        const schedulePromise = fetch(`/api/schedule/admin/available-days?startDate=${startDate}&endDate=${endDate}`, {
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                this.availableDays = data.data?.days || [];
+            });
+
+        // Загружаем блокировки за период
+        const blocksPromise = fetch(`/api/schedule/blocks?startDate=${startDate}&endDate=${endDate}`, {
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                this.blocks = data.data?.blocks || [];
+            });
+
+        return Promise.all([schedulePromise, blocksPromise]);
     },
 
     showLoading: function() {
-        document.getElementById('app').innerHTML = '<div class="loading">⏳ Загрузка...</div>';
+        document.getElementById('app').innerHTML = '<div class="loading">⏳ Загрузка ленты...</div>';
     },
 
     showError: function(message) {
         document.getElementById('app').innerHTML = `<div class="error">❌ Ошибка: ${message}</div>`;
     },
 
-    loadSchedule: function() {
-        return fetch(`/api/schedule/admin/available-days?startDate=${this.currentDate}&endDate=${this.currentDate}`, {
-            headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
-        })
-            .then(response => {
-                if (!response.ok) throw { status: response.status, message: 'Ошибка загрузки расписания' };
-                return response.json();
-            })
-            .then(data => {
-                if (data.data && data.data.days && data.data.days.length > 0) {
-                    this.availableDay = data.data.days[0];
-                } else {
-                    this.availableDay = null;
-                }
-            });
-    },
-
-    loadAppointments: function() {
-        return fetch(`/api/appointments?date=${this.currentDate}`, {
-            headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
-        })
-            .then(response => {
-                if (!response.ok) throw { status: response.status, message: 'Ошибка загрузки записей' };
-                return response.json();
-            })
-            .then(data => {
-                this.appointments = data.data.appointments || [];
-            });
-    },
-
-    loadBlocks: function() {
-        return fetch(`/api/schedule/blocks?startDate=${this.currentDate}&endDate=${this.currentDate}`, {
-            headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
-        })
-            .then(response => {
-                if (!response.ok) throw { status: response.status, message: 'Ошибка загрузки блокировок' };
-                return response.json();
-            })
-            .then(data => {
-                this.blocks = data.data.blocks || [];
-            });
-    },
-
     render: function() {
+        if (!this.timelineData) return;
+
         const app = document.getElementById('app');
         const user = JSON.parse(localStorage.getItem('user') || '{}');
 
         let html = `
             <div class="header">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h1>📅 Расписание мастера</h1>
+                    <h1>📅 Бесконечная лента расписания</h1>
                     <div style="display: flex; gap: 20px; align-items: center;">
                         <span>👤 ${user.firstName || 'Мастер'} (${user.role || 'ADMIN'})</span>
                         <button onclick="CalendarApp.logout()" style="padding: 5px 10px;">Выйти</button>
@@ -157,171 +164,231 @@ const CalendarApp = {
                 </div>
                 
                 <div class="date-nav">
-                    <button onclick="CalendarApp.prevDay()">← Вчера</button>
-                    <span id="currentDate">${this.formatDate(this.currentDate)}</span>
-                    <button onclick="CalendarApp.nextDay()">Завтра →</button>
+                    <button onclick="CalendarApp.prevWeek()">← Неделя назад</button>
+                    <span id="currentRange">
+                        ${this.formatDate(this.timelineData.startDate)} — ${this.formatDate(this.timelineData.endDate)}
+                    </span>
+                    <button onclick="CalendarApp.nextWeek()">Неделя вперед →</button>
                     <button onclick="CalendarApp.today()">Сегодня</button>
+                    
+                    <select id="daysCountSelect" onchange="CalendarApp.changeDaysCount()">
+                        <option value="3">3 дня</option>
+                        <option value="7" selected>7 дней</option>
+                        <option value="14">14 дней</option>
+                        <option value="30">30 дней</option>
+                    </select>
+                </div>
+                
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-label">Всего записей</div>
+                        <div class="stat-value">${this.timelineData.totalAppointments}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Подтверждено</div>
+                        <div class="stat-value" style="color: #28a745;">${this.timelineData.stats.confirmedCount}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Ожидание</div>
+                        <div class="stat-value" style="color: #ffc107;">${this.timelineData.stats.pendingCount}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Выполнено</div>
+                        <div class="stat-value" style="color: #007bff;">${this.timelineData.stats.completedCount}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Отменено</div>
+                        <div class="stat-value" style="color: #6c757d;">${this.timelineData.stats.cancelledCount}</div>
+                    </div>
                 </div>
             </div>
         `;
 
-        if (!this.availableDay) {
-            html += `
-                <div class="timeline-container">
-                    <div style="text-align: center; padding: 50px; color: #6c757d;">
-                        ❌ Нет доступного времени на этот день<br>
-                        <button onclick="CalendarApp.addAvailableDay()" style="margin-top: 20px; padding: 10px 20px;">
-                            + Добавить рабочий день
-                        </button>
-                    </div>
-                </div>
-            `;
-            app.innerHTML = html;
-            return;
-        }
+        // Рендерим ленту
+        html += this.renderTimeline();
 
-        const workStart = this.parseTime(this.availableDay.workStart);
-        const workEnd = this.parseTime(this.availableDay.workEnd);
-        const totalHours = workEnd.hour - workStart.hour;
-
+        // Легенда
         html += `
-            <div class="timeline-container">
-                <div class="timeline" style="position: relative; height: 60px;">
-                    ${this.renderHourMarkers(workStart.hour, workEnd.hour)}
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #28a745;"></div>
+                    <span>Подтверждено</span>
                 </div>
-                
-                <div class="appointments-container" style="position: relative; min-height: 300px;">
-                    ${this.renderAppointments()}
-                    ${this.renderBlocks()}
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffc107;"></div>
+                    <span>Ожидание</span>
                 </div>
-                
-                <div class="legend">
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #28a745;"></div>
-                        <span>Подтверждено</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #ffc107;"></div>
-                        <span>Ожидание</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #007bff;"></div>
-                        <span>Выполнено</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: #6c757d;"></div>
-                        <span>Отменено</span>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-color" style="background: rgba(220,53,69,0.3); border: 2px solid #dc3545;"></div>
-                        <span>Заблокировано</span>
-                    </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #007bff;"></div>
+                    <span>Выполнено</span>
                 </div>
-                
-                ${this.renderStats()}
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #6c757d;"></div>
+                    <span>Отменено</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: rgba(220,53,69,0.3); border: 2px solid #dc3545;"></div>
+                    <span>Заблокировано</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #f8f9fa; border: 2px dashed #aaa;"></div>
+                    <span>Нет рабочего дня</span>
+                </div>
             </div>
         `;
 
         app.innerHTML = html;
+
+        // Устанавливаем выбранное значение в select
+        document.getElementById('daysCountSelect').value = this.daysCount;
     },
 
-    renderHourMarkers: function(startHour, endHour) {
-        let markers = '';
-        for (let hour = startHour; hour <= endHour; hour++) {
-            const left = (hour - startHour) * 60;
-            markers += `
-                <div class="hour-marker" style="left: ${left}px;">
-                    ${hour}:00
-                </div>
-            `;
+    renderTimeline: function() {
+        let html = '<div class="timeline-scroll-container" style="overflow-x: auto; white-space: nowrap;">';
+
+        // Сортируем дни
+        const sortedDays = Object.keys(this.timelineData.appointmentsByDay).sort();
+
+        for (const dateStr of sortedDays) {
+            const appointments = this.timelineData.appointmentsByDay[dateStr] || [];
+            const availableDay = this.availableDays.find(d => d.availableDate === dateStr);
+            const dayBlocks = this.blocks.filter(b => {
+                const blockDate = b.startTime.split(' ')[0];
+                return blockDate === dateStr;
+            });
+
+            html += this.renderDayColumn(dateStr, appointments, availableDay, dayBlocks);
         }
-        return markers;
+
+        html += '</div>';
+        return html;
     },
 
-    renderAppointments: function() {
-        if (!this.appointments.length) return '';
+    renderDayColumn: function(dateStr, appointments, availableDay, blocks) {
+        const formattedDate = this.formatDate(dateStr);
+        const dayName = this.getDayName(dateStr);
+        const isToday = this.isToday(dateStr);
+        const hasWorkingDay = availableDay && availableDay.available;
 
-        const workStart = this.parseTime(this.availableDay.workStart);
+        let columnClass = 'day-column';
+        if (isToday) columnClass += ' today';
+        if (!hasWorkingDay) columnClass += ' non-working';
 
-        return this.appointments.map(apt => {
-            const start = this.parseDateTime(apt.startTime);
-            const end = this.parseDateTime(apt.endTime);
-
-            const startMinutes = (start.hour - workStart.hour) * 60 + start.minute;
-            const duration = (end.hour - start.hour) * 60 + (end.minute - start.minute);
-
-            const statusClass = this.getStatusClass(apt.status);
-            const statusText = this.getStatusText(apt.status);
-
-            return `
-                <div class="appointment ${statusClass}" 
-                     style="left: ${startMinutes}px; width: ${duration}px;"
-                     onclick="CalendarApp.showAppointmentDetails(${JSON.stringify(apt).replace(/"/g, '&quot;')})"
-                     title="${apt.client.firstName} ${apt.client.lastName || ''} - ${apt.service.name}">
-                    <strong>${apt.client.firstName}</strong><br>
-                    ${apt.service.name}<br>
-                    <small>${statusText}</small>
+        let html = `
+            <div class="${columnClass}" style="display: inline-block; vertical-align: top; width: 300px; margin-right: 10px; border: 1px solid #dee2e6; border-radius: 5px; background: white;">
+                <div style="padding: 10px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; position: sticky; left: 0;">
+                    <div style="font-weight: bold;">${dayName}</div>
+                    <div>${formattedDate}</div>
+                    ${hasWorkingDay ?
+            `<small>🕐 ${availableDay.workStart} — ${availableDay.workEnd}</small>` :
+            '<small style="color: #dc3545;">❌ Нет рабочего дня</small>'}
                 </div>
-            `;
-        }).join('');
-    },
+                <div class="appointments-list" style="min-height: 400px; padding: 10px; background: ${hasWorkingDay ? '#fff' : '#f8f9fa'};">
+        `;
 
-    renderBlocks: function() {
-        if (!this.blocks.length) return '';
+        // Добавляем блокировки
+        blocks.forEach(block => {
+            html += this.renderBlockItem(block);
+        });
 
-        const workStart = this.parseTime(this.availableDay.workStart);
+        // Добавляем записи
+        appointments.forEach(apt => {
+            html += this.renderAppointmentItem(apt);
+        });
 
-        return this.blocks.filter(block => block.blocked).map(block => {
-            const start = this.parseDateTime(block.startTime);
-            const end = this.parseDateTime(block.endTime);
+        // Если нет ни записей, ни блокировок, показываем пустой день
+        if (appointments.length === 0 && blocks.length === 0) {
+            html += '<div style="color: #aaa; text-align: center; padding: 20px;">Нет записей</div>';
+        }
 
-            const startMinutes = (start.hour - workStart.hour) * 60 + start.minute;
-            const duration = (end.hour - start.hour) * 60 + (end.minute - start.minute);
-
-            return `
-                <div class="blocked" 
-                     style="left: ${startMinutes}px; width: ${duration}px;"
-                     title="Заблокировано: ${block.reason || 'нет причины'}">
-                    🚫 ${block.reason || 'Занято'}<br>
-                    <small>${block.notes || ''}</small>
+        html += `
                 </div>
-            `;
-        }).join('');
+                ${hasWorkingDay ?
+            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
+                        <button onclick="CalendarApp.showAddAppointmentForm('${dateStr}')" style="font-size: 12px;">+ Добавить запись</button>
+                    </div>` :
+            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
+                        <button onclick="CalendarApp.addAvailableDay('${dateStr}')" style="font-size: 12px;">➕ Сделать рабочим днём</button>
+                    </div>`}
+            </div>
+        `;
+
+        return html;
     },
 
-    renderStats: function() {
-        const total = this.appointments.length;
-        const confirmed = this.appointments.filter(a => a.status === 'CONFIRMED').length;
-        const pending = this.appointments.filter(a => a.status === 'PENDING' || a.status === 'CREATED').length;
-        const cancelled = this.appointments.filter(a => a.status === 'CANCELLED').length;
-        const completed = this.appointments.filter(a => a.status === 'COMPLETED').length;
+    renderAppointmentItem: function(apt) {
+        const statusClass = this.getStatusClass(apt.status);
+        const statusText = this.getStatusText(apt.status);
+        const timeStr = apt.startTime.split(' ')[1] + ' — ' + apt.endTime.split(' ')[1];
 
         return `
-            <div class="stats">
-                <div class="stat-item">
-                    <div class="stat-label">Всего записей</div>
-                    <div class="stat-value">${total}</div>
+            <div class="appointment-item ${statusClass}" 
+                 style="margin-bottom: 8px; padding: 8px; border-radius: 4px; cursor: pointer;"
+                 onclick="CalendarApp.showAppointmentDetails(${JSON.stringify(apt).replace(/"/g, '&quot;')})"
+                 draggable="true"
+                 ondragstart="CalendarApp.dragStart(event, '${apt.id}')"
+                 ondragend="CalendarApp.dragEnd(event)">
+                <div style="display: flex; justify-content: space-between;">
+                    <strong>${apt.client.firstName}</strong>
+                    <small>${timeStr}</small>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-label">Подтверждено</div>
-                    <div class="stat-value" style="color: #28a745;">${confirmed}</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Ожидание</div>
-                    <div class="stat-value" style="color: #ffc107;">${pending}</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Выполнено</div>
-                    <div class="stat-value" style="color: #007bff;">${completed}</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-label">Отменено</div>
-                    <div class="stat-value" style="color: #6c757d;">${cancelled}</div>
-                </div>
+                <div style="font-size: 12px;">${apt.service.name}</div>
+                <div style="font-size: 10px; color: #666;">${statusText}</div>
             </div>
         `;
     },
 
+    renderBlockItem: function(block) {
+        const timeStr = block.startTime.split(' ')[1] + ' — ' + block.endTime.split(' ')[1];
+
+        return `
+            <div class="blocked-item" 
+                 style="margin-bottom: 8px; padding: 8px; border-radius: 4px; background: rgba(220,53,69,0.1); border: 1px solid #dc3545; color: #721c24;">
+                <div style="display: flex; justify-content: space-between;">
+                    <strong>🚫 ${block.reason || 'Заблокировано'}</strong>
+                    <small>${timeStr}</small>
+                </div>
+                <div style="font-size: 12px;">${block.notes || ''}</div>
+            </div>
+        `;
+    },
+
+    // Навигация
+    prevWeek: function() {
+        const date = new Date(this.currentStartDate);
+        date.setDate(date.getDate() - this.daysCount);
+        this.currentStartDate = date.toISOString().split('T')[0];
+        this.loadTimeline();
+    },
+
+    nextWeek: function() {
+        const date = new Date(this.currentStartDate);
+        date.setDate(date.getDate() + this.daysCount);
+        this.currentStartDate = date.toISOString().split('T')[0];
+        this.loadTimeline();
+    },
+
+    today: function() {
+        this.currentStartDate = new Date().toISOString().split('T')[0];
+        this.loadTimeline();
+    },
+
+    changeDaysCount: function() {
+        this.daysCount = parseInt(document.getElementById('daysCountSelect').value);
+        this.loadTimeline();
+    },
+
+    // Drag & Drop (заготовка)
+    dragStart: function(event, appointmentId) {
+        event.dataTransfer.setData('text/plain', appointmentId);
+        event.dataTransfer.effectAllowed = 'move';
+    },
+
+    dragEnd: function(event) {
+        // Будет реализовано позже
+    },
+
+    // Вспомогательные методы
     showAppointmentDetails: function(appointment) {
         const details = `
             📅 Запись #${appointment.id}\n
@@ -330,22 +397,25 @@ const CalendarApp = {
             💇 Услуга: ${appointment.service.name}\n
             ⏱ Длительность: ${appointment.service.durationMinutes} мин\n
             💰 Цена: ${appointment.service.price} руб\n
-            🕐 Время: ${appointment.startTime} - ${appointment.endTime}\n
+            🕐 Время: ${appointment.startTime} — ${appointment.endTime}\n
             📊 Статус: ${appointment.status}\n
             📝 Заметки: ${appointment.clientNotes || 'нет'}
         `;
         alert(details);
     },
 
-    addAvailableDay: function() {
-        const date = this.currentDate;
+    showAddAppointmentForm: function(dateStr) {
+        alert('Добавить запись на ' + this.formatDate(dateStr) + ' (будет реализовано)');
+    },
+
+    addAvailableDay: function(dateStr) {
         const workStart = prompt('Введите время начала (например, 10:00)', '10:00');
         if (!workStart) return;
 
         const workEnd = prompt('Введите время окончания (например, 19:00)', '19:00');
         if (!workEnd) return;
 
-        fetch(`/api/schedule/available-days?date=${date}&workStart=${workStart}&workEnd=${workEnd}`, {
+        fetch(`/api/schedule/available-days?date=${dateStr}&workStart=${workStart}&workEnd=${workEnd}`, {
             method: 'POST',
             headers: {
                 'Authorization': 'Bearer ' + localStorage.getItem('token')
@@ -355,52 +425,34 @@ const CalendarApp = {
             .then(data => {
                 if (data.success) {
                     alert('✅ Рабочий день добавлен');
-                    this.loadData();
+                    this.loadTimeline();
                 } else {
                     alert('❌ Ошибка: ' + data.message);
                 }
             });
     },
 
-    prevDay: function() {
-        const date = new Date(this.currentDate);
-        date.setDate(date.getDate() - 1);
-        this.currentDate = date.toISOString().split('T')[0];
-        this.loadData();
-    },
-
-    nextDay: function() {
-        const date = new Date(this.currentDate);
-        date.setDate(date.getDate() + 1);
-        this.currentDate = date.toISOString().split('T')[0];
-        this.loadData();
-    },
-
-    today: function() {
-        this.currentDate = new Date().toISOString().split('T')[0];
-        this.loadData();
-    },
-
     formatDate: function(dateStr) {
+        // Из '2026-02-18' в '18.02.2026'
+        if (!dateStr) return '';
         const [year, month, day] = dateStr.split('-');
         return `${day}.${month}.${year}`;
     },
 
-    parseTime: function(timeStr) {
-        const [hour, minute] = timeStr.split(':').map(Number);
-        return { hour, minute };
+    formatDateForApi: function(dateStr) {
+        // Из '2026-02-18' в '18.02.2026' для API
+        return this.formatDate(dateStr);
     },
 
-    parseDateTime: function(dateTimeStr) {
-        // Формат: "2026-02-18 12:00:00" или "18.02.2026 12:00"
-        let timePart;
-        if (dateTimeStr.includes('T')) {
-            timePart = dateTimeStr.split('T')[1];
-        } else {
-            timePart = dateTimeStr.split(' ')[1];
-        }
-        const [hour, minute] = timePart.split(':').map(Number);
-        return { hour, minute };
+    getDayName: function(dateStr) {
+        const date = new Date(dateStr + 'T12:00:00'); // Полдень, чтобы избежать проблем с часовыми поясами
+        const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+        return days[date.getDay()];
+    },
+
+    isToday: function(dateStr) {
+        const today = new Date().toISOString().split('T')[0];
+        return dateStr === today;
     },
 
     getStatusClass: function(status) {
@@ -426,12 +478,11 @@ const CalendarApp = {
     },
 
     setupEventListeners: function() {
-        // Для навигации с клавиатуры
         document.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft' && e.ctrlKey) {
-                this.prevDay();
+                this.prevWeek();
             } else if (e.key === 'ArrowRight' && e.ctrlKey) {
-                this.nextDay();
+                this.nextWeek();
             }
         });
     }
