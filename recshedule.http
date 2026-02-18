@@ -1,0 +1,8 @@
+eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiI5MjkwNDk4MjM3IiwiaWF0IjoxNzcxNDAxNDY2LCJleHAiOjE3NzE0ODc4NjZ9.cD_kXvfeizOfCXo62ah8LAbX_DRhR_72dcNZ3pIs3BD4_eZG1GZwurU6ziXlqurh
+
+
+
+ curl -X PATCH "http://localhost:8080/api/appointments/19/reschedule?newStartTime=18.02.2026+12:30"\
+  -H "Authorization: Bearer eyJhbGciOiJIUzM4NCJ9.eyJzdWIiOiI5MjkwNDk4MjM3IiwiaWF0IjoxNzcxNDAxNDY2LCJleHAiOjE3NzE0ODc4NjZ9.cD_kXvfeizOfCXo62ah8LAbX_DRhR_72dcNZ3pIs3BD4_eZG1GZwurU6ziXlqurh"\
+  -H "Content-Type: application/json"
+###

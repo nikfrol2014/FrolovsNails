@@ -75,14 +75,29 @@ public class Appointment {
     @MoscowDateTime
     private LocalDateTime updatedAt;
 
-    @PrePersist
-    protected void onCreate() {
-        createdAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
-        // endTime вычисляется в сервисе перед сохранением
-    }
+//    @PrePersist
+//    protected void onCreate() {
+//        createdAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
+//        // endTime вычисляется в сервисе перед сохранением
+//    }
+//
+//    @PreUpdate
+//    protected void onUpdate() {
+//        updatedAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
+//    }
 
+    @PrePersist
     @PreUpdate
-    protected void onUpdate() {
+    protected void roundTimes() {
+        createdAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
         updatedAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
+
+        // Округляем до минут (отбрасываем секунды и наносекунды)
+        if (startTime != null) {
+            startTime = startTime.withSecond(0).withNano(0);
+        }
+        if (endTime != null) {
+            endTime = endTime.withSecond(0).withNano(0);
+        }
     }
 }

@@ -3,12 +3,14 @@ package com.frolovsnails.entity;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.frolovsnails.dto.annotation.MoscowDate;
 import com.frolovsnails.dto.annotation.MoscowTime;
+import com.frolovsnails.util.DateTimeUtils;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Entity
@@ -39,4 +41,16 @@ public class AvailableDay {
 
     @Column(name = "notes", columnDefinition = "TEXT")
     private String notes;
+
+    @PrePersist
+    @PreUpdate
+    protected void roundTimes() {
+        // Округляем до минут (отбрасываем секунды и наносекунды)
+        if (workStart != null) {
+            workStart = workStart.withSecond(0).withNano(0);
+        }
+        if (workEnd != null) {
+            workEnd = workEnd.withSecond(0).withNano(0);
+        }
+    }
 }

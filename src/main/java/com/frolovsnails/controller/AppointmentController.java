@@ -14,6 +14,8 @@ import com.frolovsnails.repository.UserRepository;
 import com.frolovsnails.service.AppointmentService;
 import com.frolovsnails.service.ScheduleService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -359,7 +361,7 @@ public class AppointmentController {
             @RequestParam LocalDateTime newStartTime) {
 
         try {
-            Appointment appointment = appointmentService.rescheduleAppointment(id, newStartTime);
+            Appointment appointment = appointmentService.rescheduleAppointment(id, newStartTime.withSecond(0).withNano(0));
 
             return ResponseEntity.ok(ApiResponse.success(
                     "✅ Запись перенесена успешно",

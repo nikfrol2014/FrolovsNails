@@ -34,4 +34,16 @@ public class ScheduleBlock {
 
     @Column(name = "is_blocked", nullable = false)
     private Boolean isBlocked = true;
+
+    @PrePersist
+    @PreUpdate
+    protected void roundTimes() {
+        // Округляем до минут (отбрасываем секунды и наносекунды)
+        if (startTime != null) {
+            startTime = startTime.withSecond(0).withNano(0);
+        }
+        if (endTime != null) {
+            endTime = endTime.withSecond(0).withNano(0);
+        }
+    }
 }
