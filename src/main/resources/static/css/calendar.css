@@ -1,0 +1,70 @@
+/* Дополнительные стили, если нужно расширить базовые */
+.appointment {
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.2s;
+}
+
+.appointment:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 1000;
+}
+
+.blocked {
+    cursor: not-allowed;
+    user-select: none;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .header {
+        padding: 10px;
+    }
+
+    .date-nav {
+        flex-wrap: wrap;
+    }
+
+    .date-nav button {
+        padding: 5px 10px;
+        font-size: 12px;
+    }
+
+    .legend {
+        flex-wrap: wrap;
+    }
+
+    .stats {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Анимации */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.appointments-container {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Скроллбар */
+.timeline-container::-webkit-scrollbar {
+    height: 8px;
+}
+
+.timeline-container::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.timeline-container::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.timeline-container::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}

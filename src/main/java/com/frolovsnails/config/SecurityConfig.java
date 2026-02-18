@@ -89,6 +89,20 @@ public class SecurityConfig {
                                 "/images/**",
                                 "/favicon.ico",
 
+                                // Статические файлы
+                                "/",
+                                "/index.html",
+                                "/calendar.html",
+                                "/css/**",
+                                "/js/**",
+                                "/images/**",
+
+                                // Для работы календаря
+                                "/api/schedule/admin/available-days",
+                                "/api/schedule/blocks",
+                                "/api/appointments",
+                                "/api/appointments/**",
+
                                 // Ошибки
                                 "/error",
                                 "/error/**"
