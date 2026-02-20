@@ -68,3 +68,40 @@
 .timeline-container::-webkit-scrollbar-thumb:hover {
     background: #555;
 }
+
+.appointment-item[draggable="true"] {
+    cursor: grab;
+    user-select: none;
+}
+
+.appointment-item[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.appointment-item.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+}
+
+.day-column .appointments-list {
+    transition: background-color 0.2s;
+}
+
+.day-column .appointments-list[dragover="true"] {
+    background-color: #e3f2fd !important;
+    outline: 2px dashed #2196f3;
+}
+
+/* Подсветка рабочего дня */
+.day-column.today {
+    border: 2px solid #007bff !important;
+}
+
+.day-column.non-working {
+    background-color: #f8f9fa;
+    opacity: 0.8;
+}
+
+.day-column.non-working .appointments-list {
+    background-color: #f8f9fa !important;
+}

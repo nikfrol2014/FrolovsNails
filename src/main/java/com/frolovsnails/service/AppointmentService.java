@@ -10,6 +10,7 @@ import com.frolovsnails.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
@@ -29,6 +30,7 @@ public class AppointmentService {
     private final AppointmentMapper appointmentMapper;
     private final ScheduleService scheduleService;
     private final ScheduleBlockRepository scheduleBlockRepository;
+    private final AvailableDayRepository availableDayRepository;
 
     // ========== ДЛЯ КЛИЕНТОВ ==========
 
@@ -356,5 +358,72 @@ public class AppointmentService {
         return appointmentRepository.findByClientIdAndDateAfter(client.getId(), monthAgo).stream()
                 .map(appointmentMapper::toResponse)
                 .toList();
+    }
+
+    @Transactional
+    public Appointment moveAppointment(Long id, LocalDateTime newStartTime, Long newServiceId) {
+        // 1. Находим запись
+        Appointment appointment = appointmentRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Запись не найдена"));
+
+        // 2. Определяем услугу (старую или новую)
+        Service service;
+        if (newServiceId != null) {
+            service = serviceRepository.findById(newServiceId)
+                    .filter(Service::getIsActive)
+                    .orElseThrow(() -> new RuntimeException("Услуга не найдена или неактивна"));
+        } else {
+            service = appointment.getService();
+        }
+
+        // 3. Проверяем доступность нового времени
+        LocalDateTime newEndTime = calculateEndTime(newStartTime, service);
+
+        // Проверяем пересечения (исключая текущую запись)
+        boolean hasOverlap = appointmentRepository.existsOverlappingExcludingId(
+                newStartTime, newEndTime, id);
+
+        if (hasOverlap) {
+            throw new RuntimeException("Выбранное время уже занято");
+        }
+
+        // 4. Проверяем блокировки
+        List<ScheduleBlock> blocks = scheduleBlockRepository.findBlocksInRange(
+                newStartTime, newEndTime);
+
+        if (!blocks.isEmpty()) {
+            throw new RuntimeException("Это время заблокировано");
+        }
+
+        // 5. Проверяем, что время попадает в рабочий день
+        LocalDate newDate = newStartTime.toLocalDate();
+        AvailableDay availableDay = availableDayRepository
+                .findByAvailableDateAndIsAvailableTrue(newDate)
+                .orElseThrow(() -> new RuntimeException("На эту дату нет рабочего дня"));
+
+        if (newStartTime.toLocalTime().isBefore(availableDay.getWorkStart()) ||
+                newEndTime.toLocalTime().isAfter(availableDay.getWorkEnd())) {
+            throw new RuntimeException("Время выходит за пределы рабочего дня");
+        }
+
+        // 6. Сохраняем историю (опционально)
+        saveMoveHistory(appointment, newStartTime, newServiceId);
+
+        // 7. Обновляем запись
+        appointment.setStartTime(newStartTime);
+        appointment.setEndTime(newEndTime);
+        if (newServiceId != null) {
+            appointment.setService(service);
+        }
+
+        Appointment moved = appointmentRepository.save(appointment);
+        log.info("Запись {} перемещена на {} (админ: {})",
+                id, newStartTime, SecurityContextHolder.getContext().getAuthentication().getName());
+
+        return moved;
+    }
+
+    private void saveMoveHistory(Appointment appointment, LocalDateTime newTime, Long newServiceId) {
+        // TODO: реализовать историю изменений
     }
 }

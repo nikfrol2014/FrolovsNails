@@ -93,8 +93,15 @@ const CalendarApp = {
             })
             .then(data => {
                 if (data.success) {
+                    // Очищаем даты от возможных точек в конце
+                    if (data.data.startDate && data.data.startDate.endsWith('.')) {
+                        data.data.startDate = data.data.startDate.slice(0, -1);
+                    }
+                    if (data.data.endDate && data.data.endDate.endsWith('.')) {
+                        data.data.endDate = data.data.endDate.slice(0, -1);
+                    }
+
                     this.timelineData = data.data;
-                    // Дополнительно загружаем рабочие дни и блокировки для этого периода
                     return this.loadAdditionalData();
                 } else {
                     throw new Error(data.message);
@@ -111,8 +118,11 @@ const CalendarApp = {
     loadAdditionalData: function() {
         if (!this.timelineData) return Promise.resolve();
 
+        // ПРАВИЛЬНОЕ форматирование дат для API
         const startDate = this.formatDateForApi(this.timelineData.startDate);
         const endDate = this.formatDateForApi(this.timelineData.endDate);
+
+        console.log('Загрузка рабочих дней с', startDate, 'по', endDate);
 
         // Загружаем рабочие дни за период
         const schedulePromise = fetch(`/api/schedule/admin/available-days?startDate=${startDate}&endDate=${endDate}`, {
@@ -122,7 +132,27 @@ const CalendarApp = {
         })
             .then(response => response.json())
             .then(data => {
+                console.log('Получены рабочие дни:', data);
+
+                // API возвращает массив days с полями:
+                // - availableDate
+                // - workStart
+                // - workEnd
+                // - isAvailable (а не available!)
+                // - notes
                 this.availableDays = data.data?.days || [];
+
+                // Преобразуем даты в ISO для удобства сравнения
+                this.availableDays = this.availableDays.map(day => {
+                    // API возвращает дату в формате "18.02.2026"
+                    if (day.availableDate && day.availableDate.includes('.')) {
+                        const [dayStr, monthStr, yearStr] = day.availableDate.split('.');
+                        day.availableDate = `${yearStr}-${monthStr}-${dayStr}`;
+                    }
+                    return day;
+                });
+
+                console.log('Обработанные рабочие дни:', this.availableDays);
             });
 
         // Загружаем блокировки за период
@@ -137,6 +167,89 @@ const CalendarApp = {
             });
 
         return Promise.all([schedulePromise, blocksPromise]);
+    },
+
+    isWorkingDay: function(dateStr) {
+        if (!this.availableDays || this.availableDays.length === 0) {
+            console.log('Нет availableDays для проверки', dateStr);
+            return false;
+        }
+
+        // dateStr в формате ISO (2026-02-18)
+        const day = this.availableDays.find(d => d.availableDate === dateStr);
+        console.log('Проверка дня', dateStr, ':', day);
+
+        // isAvailable - правильное название поля!
+        return day && day.isAvailable === true;
+    },
+
+    dragStart: function(event, appointmentId) {
+        event.dataTransfer.setData('text/plain', appointmentId);
+        event.dataTransfer.effectAllowed = 'move';
+
+        // Сохраняем ID для использования в drop
+        this.draggedAppointmentId = appointmentId;
+
+        // Добавляем класс для визуального отображения
+        event.target.classList.add('dragging');
+    },
+
+    dragEnd: function(event) {
+        event.target.classList.remove('dragging');
+        this.draggedAppointmentId = null;
+    },
+
+    dropOnDay: function(event, targetDateStr) {
+        event.preventDefault();
+
+        const appointmentId = this.draggedAppointmentId;
+        if (!appointmentId) return;
+
+        // Запрашиваем время для перемещения
+        const targetTime = prompt('Введите время (например, 14:30):', '12:00');
+        if (!targetTime) return;
+
+        // Формируем новое время
+        const newDateTime = `${targetDateStr} ${targetTime}`; // В формате ISO для API
+
+        // Отправляем запрос на перемещение
+        this.moveAppointment(appointmentId, newDateTime);
+    },
+
+    moveAppointment: function(appointmentId, newDateTime) {
+        // Конвертируем в формат API (dd.MM.yyyy HH:mm)
+        const formattedDateTime = this.formatDateTimeForApi(newDateTime);
+
+        fetch(`/api/appointments/${appointmentId}/move?newStartTime=${encodeURIComponent(formattedDateTime)}`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Запись перемещена');
+                    this.loadTimeline(); // Перезагружаем ленту
+                } else {
+                    alert('❌ Ошибка: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('❌ Ошибка соединения: ' + error.message);
+            });
+    },
+
+    formatDateTimeForApi: function(dateTimeStr) {
+        // Из '2026-02-18 14:30' в '18.02.2026 14:30'
+        if (!dateTimeStr) return '';
+
+        if (dateTimeStr.includes('-')) {
+            const [datePart, timePart] = dateTimeStr.split(' ');
+            const [year, month, day] = datePart.split('-');
+            return `${day}.${month}.${year} ${timePart}`;
+        }
+        return dateTimeStr;
     },
 
     showLoading: function() {
@@ -166,7 +279,7 @@ const CalendarApp = {
                 <div class="date-nav">
                     <button onclick="CalendarApp.prevWeek()">← Неделя назад</button>
                     <span id="currentRange">
-                        ${this.formatDate(this.timelineData.startDate)} — ${this.formatDate(this.timelineData.endDate)}
+                        ${this.formatDateRange(this.timelineData.startDate, this.timelineData.endDate)}
                     </span>
                     <button onclick="CalendarApp.nextWeek()">Неделя вперед →</button>
                     <button onclick="CalendarApp.today()">Сегодня</button>
@@ -265,56 +378,107 @@ const CalendarApp = {
     },
 
     renderDayColumn: function(dateStr, appointments, availableDay, blocks) {
+        // Защита от undefined
+        if (!dateStr) {
+            console.warn('renderDayColumn вызван с пустой датой');
+            return '';
+        }
+
+        // Находим информацию о рабочем дне
+        const dayInfo = availableDay || this.availableDays.find(d => d.availableDate === dateStr);
+
+        // Правильная проверка: isAvailable, а не available
+        const hasWorkingDay = dayInfo && dayInfo.isAvailable === true;
+
+        console.log(`День ${dateStr}:`, dayInfo, 'рабочий?', hasWorkingDay);
+
         const formattedDate = this.formatDate(dateStr);
         const dayName = this.getDayName(dateStr);
         const isToday = this.isToday(dateStr);
-        const hasWorkingDay = availableDay && availableDay.available;
 
         let columnClass = 'day-column';
         if (isToday) columnClass += ' today';
         if (!hasWorkingDay) columnClass += ' non-working';
 
+        // Формируем информацию о рабочем времени
+        let workingHoursHtml = '';
+        if (hasWorkingDay) {
+            // Правильные имена полей: workStart и workEnd
+            workingHoursHtml = `<small>🕐 ${dayInfo.workStart} — ${dayInfo.workEnd}</small>`;
+        } else {
+            workingHoursHtml = '<small style="color: #dc3545;">❌ Нет рабочего дня</small>';
+        }
+
         let html = `
-            <div class="${columnClass}" style="display: inline-block; vertical-align: top; width: 300px; margin-right: 10px; border: 1px solid #dee2e6; border-radius: 5px; background: white;">
-                <div style="padding: 10px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; position: sticky; left: 0;">
-                    <div style="font-weight: bold;">${dayName}</div>
-                    <div>${formattedDate}</div>
-                    ${hasWorkingDay ?
-            `<small>🕐 ${availableDay.workStart} — ${availableDay.workEnd}</small>` :
-            '<small style="color: #dc3545;">❌ Нет рабочего дня</small>'}
-                </div>
-                <div class="appointments-list" style="min-height: 400px; padding: 10px; background: ${hasWorkingDay ? '#fff' : '#f8f9fa'};">
-        `;
+        <div class="${columnClass}" style="display: inline-block; vertical-align: top; width: 300px; margin-right: 10px; border: 1px solid #dee2e6; border-radius: 5px; background: white;">
+            <div style="padding: 10px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; position: sticky; left: 0;">
+                <div style="font-weight: bold;">${dayName}</div>
+                <div>${formattedDate}</div>
+                ${workingHoursHtml}
+            </div>
+            <div class="appointments-list" style="min-height: 400px; padding: 10px; background: ${hasWorkingDay ? '#fff' : '#f8f9fa'};"
+                 ondragover="event.preventDefault()"
+                 ondrop="CalendarApp.dropOnDay(event, '${dateStr}')">
+    `;
 
         // Добавляем блокировки
-        blocks.forEach(block => {
-            html += this.renderBlockItem(block);
-        });
+        if (blocks && blocks.length > 0) {
+            blocks.forEach(block => {
+                html += this.renderBlockItem(block);
+            });
+        }
 
         // Добавляем записи
-        appointments.forEach(apt => {
-            html += this.renderAppointmentItem(apt);
-        });
+        if (appointments && appointments.length > 0) {
+            appointments.forEach(apt => {
+                html += this.renderAppointmentItem(apt);
+            });
+        }
 
         // Если нет ни записей, ни блокировок, показываем пустой день
-        if (appointments.length === 0 && blocks.length === 0) {
+        if ((!appointments || appointments.length === 0) && (!blocks || blocks.length === 0)) {
             html += '<div style="color: #aaa; text-align: center; padding: 20px;">Нет записей</div>';
         }
 
         html += `
-                </div>
-                ${hasWorkingDay ?
-            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
-                        <button onclick="CalendarApp.showAddAppointmentForm('${dateStr}')" style="font-size: 12px;">+ Добавить запись</button>
-                    </div>` :
-            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
-                        <button onclick="CalendarApp.addAvailableDay('${dateStr}')" style="font-size: 12px;">➕ Сделать рабочим днём</button>
-                    </div>`}
             </div>
-        `;
+            ${hasWorkingDay ?
+            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
+                    <button onclick="CalendarApp.showAddAppointmentForm('${dateStr}')" style="font-size: 12px;">+ Добавить запись</button>
+                </div>` :
+            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
+                    <button onclick="CalendarApp.addAvailableDay('${dateStr}')" style="font-size: 12px;">➕ Сделать рабочим днём</button>
+                </div>`}
+        </div>
+    `;
 
         return html;
     },
+
+    formatDateRange: function(startDate, endDate) {
+        const start = this.formatDate(startDate);
+        const end = this.formatDate(endDate);
+
+        // Если обе даты отформатированы правильно
+        if (start && end && !start.includes('undefined') && !end.includes('undefined')) {
+            return `${start} — ${end}`;
+        }
+
+        // Если что-то пошло не так, пробуем создать даты заново
+        try {
+            // Пытаемся создать даты из строк
+            if (startDate && startDate.includes('-')) {
+                const [y, m, d] = startDate.split('-');
+                return `${d}.${m}.${y} — ${end}`;
+            }
+        } catch (e) {
+            console.error('Ошибка форматирования диапазона:', e);
+        }
+
+        return 'Ошибка формата даты';
+    },
+
+
 
     renderAppointmentItem: function(apt) {
         const statusClass = this.getStatusClass(apt.status);
@@ -378,16 +542,6 @@ const CalendarApp = {
         this.loadTimeline();
     },
 
-    // Drag & Drop (заготовка)
-    dragStart: function(event, appointmentId) {
-        event.dataTransfer.setData('text/plain', appointmentId);
-        event.dataTransfer.effectAllowed = 'move';
-    },
-
-    dragEnd: function(event) {
-        // Будет реализовано позже
-    },
-
     // Вспомогательные методы
     showAppointmentDetails: function(appointment) {
         const details = `
@@ -433,26 +587,109 @@ const CalendarApp = {
     },
 
     formatDate: function(dateStr) {
-        // Из '2026-02-18' в '18.02.2026'
         if (!dateStr) return '';
-        const [year, month, day] = dateStr.split('-');
-        return `${day}.${month}.${year}`;
+
+        // Если дата уже в формате dd.MM.yyyy, возвращаем как есть
+        if (dateStr.includes('.') && dateStr.split('.').length === 3) {
+            return dateStr;
+        }
+
+        // Если дата в ISO формате (yyyy-MM-dd)
+        if (dateStr.includes('-')) {
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                const [year, month, day] = parts;
+                // Проверяем, что это числа
+                if (!isNaN(parseInt(year)) && !isNaN(parseInt(month)) && !isNaN(parseInt(day))) {
+                    return `${day}.${month}.${year}`;
+                }
+            }
+        }
+
+        // Если дата в формате с точками, но с точками на конце (как в вашем случае)
+        // "20.02.2026." - удаляем точку в конце
+        if (dateStr.includes('.') && dateStr.endsWith('.')) {
+            const cleanStr = dateStr.slice(0, -1);
+            const parts = cleanStr.split('.');
+            if (parts.length === 3) {
+                return cleanStr; // Уже в правильном формате, просто без точки в конце
+            }
+        }
+
+        console.warn('Неизвестный формат даты:', dateStr);
+        return dateStr;
     },
 
     formatDateForApi: function(dateStr) {
-        // Из '2026-02-18' в '18.02.2026' для API
-        return this.formatDate(dateStr);
+        if (!dateStr) return '';
+
+        // Если дата уже в формате dd.MM.yyyy, возвращаем как есть
+        if (dateStr.includes('.') && dateStr.split('.').length === 3) {
+            // Убираем возможную точку в конце
+            return dateStr.endsWith('.') ? dateStr.slice(0, -1) : dateStr;
+        }
+
+        // Если в ISO (yyyy-MM-dd), конвертируем
+        if (dateStr.includes('-')) {
+            const [year, month, day] = dateStr.split('-');
+            return `${day}.${month}.${year}`;
+        }
+
+        return dateStr;
     },
 
     getDayName: function(dateStr) {
-        const date = new Date(dateStr + 'T12:00:00'); // Полдень, чтобы избежать проблем с часовыми поясами
-        const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
-        return days[date.getDay()];
+        if (!dateStr) return '';
+
+        try {
+            // Обрабатываем разные форматы
+            let year, month, day;
+
+            if (dateStr.includes('-')) {
+                [year, month, day] = dateStr.split('-');
+            } else if (dateStr.includes('.')) {
+                // Убираем точку в конце, если есть
+                const cleanStr = dateStr.endsWith('.') ? dateStr.slice(0, -1) : dateStr;
+                [day, month, year] = cleanStr.split('.');
+            } else {
+                return '';
+            }
+
+            // Создаем дату (месяцы в JS от 0 до 11)
+            const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+
+            // Проверяем, что дата валидна
+            if (isNaN(date.getTime())) {
+                return '';
+            }
+
+            const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+            return days[date.getDay()];
+        } catch (e) {
+            console.error('Ошибка в getDayName для', dateStr, e);
+            return '';
+        }
     },
 
     isToday: function(dateStr) {
-        const today = new Date().toISOString().split('T')[0];
-        return dateStr === today;
+        if (!dateStr) return false;
+
+        try {
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0]; // yyyy-MM-dd
+
+            // Приводим проверяемую дату к ISO формату
+            let compareDate = dateStr;
+            if (dateStr.includes('.')) {
+                const cleanStr = dateStr.endsWith('.') ? dateStr.slice(0, -1) : dateStr;
+                const [day, month, year] = cleanStr.split('.');
+                compareDate = `${year}-${month}-${day}`;
+            }
+
+            return compareDate === todayStr;
+        } catch (e) {
+            return false;
+        }
     },
 
     getStatusClass: function(status) {

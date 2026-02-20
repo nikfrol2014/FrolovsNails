@@ -547,4 +547,26 @@ public class AppointmentController {
 
         return getTimeline(adjustedStart, adjustedEnd, null, daysCount);
     }
+
+    @PatchMapping("/{id}/move")
+    @Operation(summary = "Переместить запись (drag-and-drop)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> moveAppointment(
+            @PathVariable Long id,
+            @RequestParam @DateTimeFormat(pattern = "dd.MM.yyyy HH:mm") LocalDateTime newStartTime,
+            @RequestParam(required = false) Long newServiceId) {
+
+        try {
+            Appointment appointment = appointmentService.moveAppointment(id, newStartTime, newServiceId);
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "✅ Запись перемещена",
+                    appointmentMapper.toResponse(appointment)
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("❌ Ошибка перемещения: " + e.getMessage())
+            );
+        }
+    }
 }
