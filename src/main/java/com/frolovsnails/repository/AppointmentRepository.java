@@ -93,4 +93,7 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             @Param("startTime") LocalDateTime startTime,
             @Param("endTime") LocalDateTime endTime,
             @Param("excludeId") Long excludeId);
+
+    @Query("SELECT a FROM Appointment a WHERE a.client.id = :clientId ORDER BY a.startTime DESC")
+    List<Appointment> findByClientId(@Param("clientId") Long clientId);
 }

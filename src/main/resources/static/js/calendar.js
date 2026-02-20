@@ -184,6 +184,9 @@ const CalendarApp = {
     },
 
     dragStart: function(event, appointmentId) {
+        // Предотвращаем всплытие, чтобы не сработал клик
+        event.stopPropagation();
+
         event.dataTransfer.setData('text/plain', appointmentId);
         event.dataTransfer.effectAllowed = 'move';
 
@@ -192,6 +195,8 @@ const CalendarApp = {
 
         // Добавляем класс для визуального отображения
         event.target.classList.add('dragging');
+
+        console.log('Drag start:', appointmentId);
     },
 
     dragEnd: function(event) {
@@ -486,12 +491,26 @@ const CalendarApp = {
         const timeStr = apt.startTime.split(' ')[1] + ' — ' + apt.endTime.split(' ')[1];
 
         return `
-            <div class="appointment-item ${statusClass}" 
-                 style="margin-bottom: 8px; padding: 8px; border-radius: 4px; cursor: pointer;"
-                 onclick="CalendarApp.showAppointmentDetails(${JSON.stringify(apt).replace(/"/g, '&quot;')})"
+        <div class="appointment-item ${statusClass}" 
+             style="margin-bottom: 8px; padding: 8px; border-radius: 4px; position: relative;"
+             data-appointment-id="${apt.id}">
+            
+            <!-- Область для перетаскивания (левая часть) -->
+            <div class="drag-handle" 
+                 style="position: absolute; left: 0; top: 0; bottom: 0; width: 20px; 
+                        background: rgba(0,0,0,0.1); cursor: grab; border-radius: 4px 0 0 4px;"
                  draggable="true"
                  ondragstart="CalendarApp.dragStart(event, '${apt.id}')"
-                 ondragend="CalendarApp.dragEnd(event)">
+                 ondragend="CalendarApp.dragEnd(event)"
+                 title="Перетащите чтобы переместить">
+                ⋮⋮
+            </div>
+            
+            <!-- Область для клика (основная часть) -->
+            <div class="clickable-area" 
+                 title="Нажмите для деталей, перетащите за ⋮⋮ чтобы переместить"
+                 style="margin-left: 25px; cursor: pointer;"
+                 onclick="CalendarApp.showAppointmentDetails(${JSON.stringify(apt).replace(/"/g, '&quot;')})">
                 <div style="display: flex; justify-content: space-between;">
                     <strong>${apt.client.firstName}</strong>
                     <small>${timeStr}</small>
@@ -499,7 +518,8 @@ const CalendarApp = {
                 <div style="font-size: 12px;">${apt.service.name}</div>
                 <div style="font-size: 10px; color: #666;">${statusText}</div>
             </div>
-        `;
+        </div>
+    `;
     },
 
     renderBlockItem: function(block) {
@@ -544,18 +564,206 @@ const CalendarApp = {
 
     // Вспомогательные методы
     showAppointmentDetails: function(appointment) {
-        const details = `
-            📅 Запись #${appointment.id}\n
-            👤 Клиент: ${appointment.client.firstName} ${appointment.client.lastName || ''}\n
-            📞 Телефон: ${appointment.client.phone}\n
-            💇 Услуга: ${appointment.service.name}\n
-            ⏱ Длительность: ${appointment.service.durationMinutes} мин\n
-            💰 Цена: ${appointment.service.price} руб\n
-            🕐 Время: ${appointment.startTime} — ${appointment.endTime}\n
-            📊 Статус: ${appointment.status}\n
-            📝 Заметки: ${appointment.clientNotes || 'нет'}
-        `;
-        alert(details);
+        console.log('Клик по записи:', appointment);
+
+        // Сохраняем текущую запись
+        this.selectedAppointment = appointment;
+
+        // Показываем индикатор загрузки (вместо alert)
+        this.showLoadingModal();
+
+        // Загружаем детальную информацию о клиенте
+        fetch(`/api/clients/${appointment.client.id}/details`, {
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            }
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Ошибка загрузки: ' + response.status);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Получены данные клиента:', data);
+
+                // Закрываем индикатор загрузки
+                this.closeLoadingModal();
+
+                if (data.success) {
+                    // Показываем модальное окно с данными
+                    this.showClientModal(data.data);
+                } else {
+                    alert('Ошибка: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+                this.closeLoadingModal();
+                alert('Ошибка соединения: ' + error.message);
+            });
+    },
+
+    // Новый метод для показа индикатора загрузки
+    showLoadingModal: function() {
+        // Удаляем предыдущий индикатор, если есть
+        this.closeLoadingModal();
+
+        const loadingHtml = `
+        <div id="loading-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
+            <div style="background: white; padding: 30px; border-radius: 10px; text-align: center;">
+                <div style="font-size: 40px; margin-bottom: 20px;">⏳</div>
+                <div style="font-size: 18px;">Загрузка данных клиента...</div>
+            </div>
+        </div>
+    `;
+
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = loadingHtml;
+        document.body.appendChild(modalContainer.firstChild);
+    },
+
+    // Новый метод для закрытия индикатора загрузки
+    closeLoadingModal: function() {
+        const modal = document.getElementById('loading-modal');
+        if (modal) modal.remove();
+    },
+
+    showClientModal: function(clientData) {
+        console.log('showClientModal вызван с данными:', clientData);
+
+        this.closeLoadingModal();
+        this.closeClientModal();
+
+        // Создаем модальное окно с максимально явными стилями
+        const modal = document.createElement('div');
+        modal.id = 'client-modal';
+
+        // Максимально явные стили
+        modal.style.cssText = `
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        background-color: rgba(0, 0, 0, 0.7) !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        z-index: 9999999 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+    `;
+
+        const content = document.createElement('div');
+        content.style.cssText = `
+        background: white !important;
+        width: 600px !important;
+        max-height: 80vh !important;
+        overflow-y: auto !important;
+        border-radius: 12px !important;
+        padding: 30px !important;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3) !important;
+        position: relative !important;
+        z-index: 10000000 !important;
+    `;
+
+        // Собираем данные
+        const client = clientData.client;
+        const stats = clientData.stats;
+
+        // Простой, но информативный контент
+        content.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; font-size: 24px;">👤 ${client.firstName} ${client.lastName || ''}</h2>
+            <button onclick="CalendarApp.closeClientModal()" 
+                    style="border: none; background: none; font-size: 30px; cursor: pointer; padding: 0 10px;">
+                ×
+            </button>
+        </div>
+        
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div>
+                    <div style="color: #666; font-size: 12px;">📞 ТЕЛЕФОН</div>
+                    <div style="font-size: 18px; font-weight: bold;">${client.phone || 'не указан'}</div>
+                </div>
+                <div>
+                    <div style="color: #666; font-size: 12px;">🎂 ДЕНЬ РОЖДЕНИЯ</div>
+                    <div>${client.birthDate || 'не указан'}</div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+            <div style="background: #007bff; color: white; padding: 15px; border-radius: 8px; text-align: center;">
+                <div style="font-size: 24px; font-weight: bold;">${stats.totalVisits || 0}</div>
+                <div style="font-size: 12px;">Визитов</div>
+            </div>
+            <div style="background: #28a745; color: white; padding: 15px; border-radius: 8px; text-align: center;">
+                <div style="font-size: 24px; font-weight: bold;">${stats.totalSpent || 0} ₽</div>
+                <div style="font-size: 12px;">Потрачено</div>
+            </div>
+            <div style="background: #ffc107; color: #333; padding: 15px; border-radius: 8px; text-align: center;">
+                <div style="font-size: 24px; font-weight: bold;">${stats.attendanceRate || 0}%</div>
+                <div style="font-size: 12px;">Посещаемость</div>
+            </div>
+        </div>
+        
+        <h3 style="margin: 20px 0 10px;">📋 Последние записи</h3>
+        ${clientData.recentAppointments.map(apt => `
+            <div style="padding: 10px; margin: 5px 0; background: #f8f9fa; border-left: 3px solid #007bff;">
+                <div><strong>${apt.startTime}</strong> — ${apt.service.name}</div>
+                <div style="font-size: 12px;">💰 ${apt.service.price} руб</div>
+            </div>
+        `).join('')}
+    `;
+
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+
+        console.log('Модальное окно создано:', modal);
+        console.log('Стили модального окна:', window.getComputedStyle(modal));
+        console.log('display:', window.getComputedStyle(modal).display);
+        console.log('visibility:', window.getComputedStyle(modal).visibility);
+        console.log('opacity:', window.getComputedStyle(modal).opacity);
+        console.log('z-index:', window.getComputedStyle(modal).zIndex);
+
+        // Закрытие по клику на фон
+        modal.onclick = function(e) {
+            if (e.target === modal) {
+                CalendarApp.closeClientModal();
+            }
+        };
+    },
+
+    closeClientModal: function() {
+        const modal = document.getElementById('client-modal');
+        if (modal) {
+            modal.remove();
+            console.log('Модальное окно удалено');
+        }
+    },
+
+    // Добавить новый метод для создания записи для клиента
+    createAppointmentForClient: function(clientId) {
+        this.closeClientModal();
+        // TODO: открыть форму создания записи для этого клиента
+        alert('Создание записи для клиента ' + clientId + ' (будет реализовано)');
+    },
+
+    editClient: function(clientId) {
+        alert('Редактирование клиента (будет реализовано)');
+        this.closeClientModal();
+    },
+
+    callClient: function(phone) {
+        if (phone && phone !== 'не указан') {
+            window.location.href = `tel:${phone}`;
+        } else {
+            alert('Номер телефона не указан');
+        }
     },
 
     showAddAppointmentForm: function(dateStr) {
