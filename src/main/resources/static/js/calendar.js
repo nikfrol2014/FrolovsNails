@@ -1,10 +1,14 @@
+// ПОЛНЫЙ ОБНОВЛЕННЫЙ ФАЙЛ calendar.js
+
 const CalendarApp = {
-    currentStartDate: new Date().toISOString().split('T')[0], // Начальная дата ленты
-    daysCount: 7, // Сколько дней показывать
+    currentStartDate: new Date().toISOString().split('T')[0],
+    daysCount: 7,
     timelineData: null,
     appointments: [],
     availableDays: [],
     blocks: [],
+    selectedAppointment: null,
+    selectedClient: null,
 
     init: function() {
         this.checkAuth();
@@ -93,7 +97,6 @@ const CalendarApp = {
             })
             .then(data => {
                 if (data.success) {
-                    // Очищаем даты от возможных точек в конце
                     if (data.data.startDate && data.data.startDate.endsWith('.')) {
                         data.data.startDate = data.data.startDate.slice(0, -1);
                     }
@@ -118,13 +121,9 @@ const CalendarApp = {
     loadAdditionalData: function() {
         if (!this.timelineData) return Promise.resolve();
 
-        // ПРАВИЛЬНОЕ форматирование дат для API
         const startDate = this.formatDateForApi(this.timelineData.startDate);
         const endDate = this.formatDateForApi(this.timelineData.endDate);
 
-        console.log('Загрузка рабочих дней с', startDate, 'по', endDate);
-
-        // Загружаем рабочие дни за период
         const schedulePromise = fetch(`/api/schedule/admin/available-days?startDate=${startDate}&endDate=${endDate}`, {
             headers: {
                 'Authorization': 'Bearer ' + localStorage.getItem('token')
@@ -132,30 +131,16 @@ const CalendarApp = {
         })
             .then(response => response.json())
             .then(data => {
-                console.log('Получены рабочие дни:', data);
-
-                // API возвращает массив days с полями:
-                // - availableDate
-                // - workStart
-                // - workEnd
-                // - isAvailable (а не available!)
-                // - notes
                 this.availableDays = data.data?.days || [];
-
-                // Преобразуем даты в ISO для удобства сравнения
                 this.availableDays = this.availableDays.map(day => {
-                    // API возвращает дату в формате "18.02.2026"
                     if (day.availableDate && day.availableDate.includes('.')) {
                         const [dayStr, monthStr, yearStr] = day.availableDate.split('.');
                         day.availableDate = `${yearStr}-${monthStr}-${dayStr}`;
                     }
                     return day;
                 });
-
-                console.log('Обработанные рабочие дни:', this.availableDays);
             });
 
-        // Загружаем блокировки за период
         const blocksPromise = fetch(`/api/schedule/blocks?startDate=${startDate}&endDate=${endDate}`, {
             headers: {
                 'Authorization': 'Bearer ' + localStorage.getItem('token')
@@ -167,94 +152,6 @@ const CalendarApp = {
             });
 
         return Promise.all([schedulePromise, blocksPromise]);
-    },
-
-    isWorkingDay: function(dateStr) {
-        if (!this.availableDays || this.availableDays.length === 0) {
-            console.log('Нет availableDays для проверки', dateStr);
-            return false;
-        }
-
-        // dateStr в формате ISO (2026-02-18)
-        const day = this.availableDays.find(d => d.availableDate === dateStr);
-        console.log('Проверка дня', dateStr, ':', day);
-
-        // isAvailable - правильное название поля!
-        return day && day.isAvailable === true;
-    },
-
-    dragStart: function(event, appointmentId) {
-        // Предотвращаем всплытие, чтобы не сработал клик
-        event.stopPropagation();
-
-        event.dataTransfer.setData('text/plain', appointmentId);
-        event.dataTransfer.effectAllowed = 'move';
-
-        // Сохраняем ID для использования в drop
-        this.draggedAppointmentId = appointmentId;
-
-        // Добавляем класс для визуального отображения
-        event.target.classList.add('dragging');
-
-        console.log('Drag start:', appointmentId);
-    },
-
-    dragEnd: function(event) {
-        event.target.classList.remove('dragging');
-        this.draggedAppointmentId = null;
-    },
-
-    dropOnDay: function(event, targetDateStr) {
-        event.preventDefault();
-
-        const appointmentId = this.draggedAppointmentId;
-        if (!appointmentId) return;
-
-        // Запрашиваем время для перемещения
-        const targetTime = prompt('Введите время (например, 14:30):', '12:00');
-        if (!targetTime) return;
-
-        // Формируем новое время
-        const newDateTime = `${targetDateStr} ${targetTime}`; // В формате ISO для API
-
-        // Отправляем запрос на перемещение
-        this.moveAppointment(appointmentId, newDateTime);
-    },
-
-    moveAppointment: function(appointmentId, newDateTime) {
-        // Конвертируем в формат API (dd.MM.yyyy HH:mm)
-        const formattedDateTime = this.formatDateTimeForApi(newDateTime);
-
-        fetch(`/api/appointments/${appointmentId}/move?newStartTime=${encodeURIComponent(formattedDateTime)}`, {
-            method: 'PATCH',
-            headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('✅ Запись перемещена');
-                    this.loadTimeline(); // Перезагружаем ленту
-                } else {
-                    alert('❌ Ошибка: ' + data.message);
-                }
-            })
-            .catch(error => {
-                alert('❌ Ошибка соединения: ' + error.message);
-            });
-    },
-
-    formatDateTimeForApi: function(dateTimeStr) {
-        // Из '2026-02-18 14:30' в '18.02.2026 14:30'
-        if (!dateTimeStr) return '';
-
-        if (dateTimeStr.includes('-')) {
-            const [datePart, timePart] = dateTimeStr.split(' ');
-            const [year, month, day] = datePart.split('-');
-            return `${day}.${month}.${year} ${timePart}`;
-        }
-        return dateTimeStr;
     },
 
     showLoading: function() {
@@ -283,9 +180,7 @@ const CalendarApp = {
                 
                 <div class="date-nav">
                     <button onclick="CalendarApp.prevWeek()">← Неделя назад</button>
-                    <span id="currentRange">
-                        ${this.formatDateRange(this.timelineData.startDate, this.timelineData.endDate)}
-                    </span>
+                    <span id="currentRange">${this.formatDateRange(this.timelineData.startDate, this.timelineData.endDate)}</span>
                     <button onclick="CalendarApp.nextWeek()">Неделя вперед →</button>
                     <button onclick="CalendarApp.today()">Сегодня</button>
                     
@@ -322,49 +217,26 @@ const CalendarApp = {
             </div>
         `;
 
-        // Рендерим ленту
         html += this.renderTimeline();
 
-        // Легенда
         html += `
             <div class="legend">
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #28a745;"></div>
-                    <span>Подтверждено</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #ffc107;"></div>
-                    <span>Ожидание</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #007bff;"></div>
-                    <span>Выполнено</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #6c757d;"></div>
-                    <span>Отменено</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: rgba(220,53,69,0.3); border: 2px solid #dc3545;"></div>
-                    <span>Заблокировано</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background: #f8f9fa; border: 2px dashed #aaa;"></div>
-                    <span>Нет рабочего дня</span>
-                </div>
+                <div class="legend-item"><div class="legend-color" style="background: #28a745;"></div><span>Подтверждено</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: #ffc107;"></div><span>Ожидание</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: #007bff;"></div><span>Выполнено</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: #6c757d;"></div><span>Отменено</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: rgba(220,53,69,0.3); border: 2px solid #dc3545;"></div><span>Заблокировано</span></div>
+                <div class="legend-item"><div class="legend-color" style="background: #f8f9fa; border: 2px dashed #aaa;"></div><span>Нет рабочего дня</span></div>
             </div>
         `;
 
         app.innerHTML = html;
-
-        // Устанавливаем выбранное значение в select
         document.getElementById('daysCountSelect').value = this.daysCount;
     },
 
     renderTimeline: function() {
         let html = '<div class="timeline-scroll-container" style="overflow-x: auto; white-space: nowrap;">';
 
-        // Сортируем дни
         const sortedDays = Object.keys(this.timelineData.appointmentsByDay).sort();
 
         for (const dateStr of sortedDays) {
@@ -383,19 +255,8 @@ const CalendarApp = {
     },
 
     renderDayColumn: function(dateStr, appointments, availableDay, blocks) {
-        // Защита от undefined
-        if (!dateStr) {
-            console.warn('renderDayColumn вызван с пустой датой');
-            return '';
-        }
-
-        // Находим информацию о рабочем дне
-        const dayInfo = availableDay || this.availableDays.find(d => d.availableDate === dateStr);
-
-        // Правильная проверка: isAvailable, а не available
+        const dayInfo = availableDay || this.availableDays.find(d => d && d.availableDate === dateStr);
         const hasWorkingDay = dayInfo && dayInfo.isAvailable === true;
-
-        console.log(`День ${dateStr}:`, dayInfo, 'рабочий?', hasWorkingDay);
 
         const formattedDate = this.formatDate(dateStr);
         const dayName = this.getDayName(dateStr);
@@ -405,85 +266,55 @@ const CalendarApp = {
         if (isToday) columnClass += ' today';
         if (!hasWorkingDay) columnClass += ' non-working';
 
-        // Формируем информацию о рабочем времени
         let workingHoursHtml = '';
         if (hasWorkingDay) {
-            // Правильные имена полей: workStart и workEnd
             workingHoursHtml = `<small>🕐 ${dayInfo.workStart} — ${dayInfo.workEnd}</small>`;
         } else {
             workingHoursHtml = '<small style="color: #dc3545;">❌ Нет рабочего дня</small>';
         }
 
         let html = `
-        <div class="${columnClass}" style="display: inline-block; vertical-align: top; width: 300px; margin-right: 10px; border: 1px solid #dee2e6; border-radius: 5px; background: white;">
-            <div style="padding: 10px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; position: sticky; left: 0;">
-                <div style="font-weight: bold;">${dayName}</div>
-                <div>${formattedDate}</div>
-                ${workingHoursHtml}
-            </div>
-            <div class="appointments-list" style="min-height: 400px; padding: 10px; background: ${hasWorkingDay ? '#fff' : '#f8f9fa'};"
-                 ondragover="event.preventDefault()"
-                 ondrop="CalendarApp.dropOnDay(event, '${dateStr}')">
-    `;
+            <div class="${columnClass}" style="display: inline-block; vertical-align: top; width: 300px; margin-right: 10px; border: 1px solid #dee2e6; border-radius: 5px; background: white;">
+                <div style="padding: 10px; background: #f8f9fa; border-bottom: 1px solid #dee2e6; position: sticky; left: 0;">
+                    <div style="font-weight: bold;">${dayName}</div>
+                    <div>${formattedDate}</div>
+                    ${workingHoursHtml}
+                </div>
+                <div class="appointments-list" style="min-height: 400px; padding: 10px; background: ${hasWorkingDay ? '#fff' : '#f8f9fa'};"
+                     ondragover="event.preventDefault()"
+                     ondrop="CalendarApp.dropOnDay(event, '${dateStr}')">
+        `;
 
-        // Добавляем блокировки
         if (blocks && blocks.length > 0) {
             blocks.forEach(block => {
                 html += this.renderBlockItem(block);
             });
         }
 
-        // Добавляем записи
         if (appointments && appointments.length > 0) {
             appointments.forEach(apt => {
                 html += this.renderAppointmentItem(apt);
             });
         }
 
-        // Если нет ни записей, ни блокировок, показываем пустой день
         if ((!appointments || appointments.length === 0) && (!blocks || blocks.length === 0)) {
             html += '<div style="color: #aaa; text-align: center; padding: 20px;">Нет записей</div>';
         }
 
         html += `
+                </div>
+                ${hasWorkingDay ?
+            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
+                        <button onclick="CalendarApp.showAddAppointmentForm('${dateStr}')" style="font-size: 12px;">+ Добавить запись</button>
+                    </div>` :
+            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
+                        <button onclick="CalendarApp.addAvailableDay('${dateStr}')" style="font-size: 12px;">➕ Сделать рабочим днём</button>
+                    </div>`}
             </div>
-            ${hasWorkingDay ?
-            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
-                    <button onclick="CalendarApp.showAddAppointmentForm('${dateStr}')" style="font-size: 12px;">+ Добавить запись</button>
-                </div>` :
-            `<div style="padding: 5px; border-top: 1px solid #dee2e6; text-align: center; background: #f8f9fa;">
-                    <button onclick="CalendarApp.addAvailableDay('${dateStr}')" style="font-size: 12px;">➕ Сделать рабочим днём</button>
-                </div>`}
-        </div>
-    `;
+        `;
 
         return html;
     },
-
-    formatDateRange: function(startDate, endDate) {
-        const start = this.formatDate(startDate);
-        const end = this.formatDate(endDate);
-
-        // Если обе даты отформатированы правильно
-        if (start && end && !start.includes('undefined') && !end.includes('undefined')) {
-            return `${start} — ${end}`;
-        }
-
-        // Если что-то пошло не так, пробуем создать даты заново
-        try {
-            // Пытаемся создать даты из строк
-            if (startDate && startDate.includes('-')) {
-                const [y, m, d] = startDate.split('-');
-                return `${d}.${m}.${y} — ${end}`;
-            }
-        } catch (e) {
-            console.error('Ошибка форматирования диапазона:', e);
-        }
-
-        return 'Ошибка формата даты';
-    },
-
-
 
     renderAppointmentItem: function(apt) {
         const statusClass = this.getStatusClass(apt.status);
@@ -491,35 +322,32 @@ const CalendarApp = {
         const timeStr = apt.startTime.split(' ')[1] + ' — ' + apt.endTime.split(' ')[1];
 
         return `
-        <div class="appointment-item ${statusClass}" 
-             style="margin-bottom: 8px; padding: 8px; border-radius: 4px; position: relative;"
-             data-appointment-id="${apt.id}">
-            
-            <!-- Область для перетаскивания (левая часть) -->
-            <div class="drag-handle" 
-                 style="position: absolute; left: 0; top: 0; bottom: 0; width: 20px; 
-                        background: rgba(0,0,0,0.1); cursor: grab; border-radius: 4px 0 0 4px;"
-                 draggable="true"
-                 ondragstart="CalendarApp.dragStart(event, '${apt.id}')"
-                 ondragend="CalendarApp.dragEnd(event)"
-                 title="Перетащите чтобы переместить">
-                ⋮⋮
-            </div>
-            
-            <!-- Область для клика (основная часть) -->
-            <div class="clickable-area" 
-                 title="Нажмите для деталей, перетащите за ⋮⋮ чтобы переместить"
-                 style="margin-left: 25px; cursor: pointer;"
-                 onclick="CalendarApp.showAppointmentDetails(${JSON.stringify(apt).replace(/"/g, '&quot;')})">
-                <div style="display: flex; justify-content: space-between;">
-                    <strong>${apt.client.firstName}</strong>
-                    <small>${timeStr}</small>
+            <div class="appointment-item ${statusClass}" 
+                 style="margin-bottom: 8px; padding: 8px; border-radius: 4px; position: relative;"
+                 data-appointment-id="${apt.id}">
+                
+                <div class="drag-handle" 
+                     style="position: absolute; left: 0; top: 0; bottom: 0; width: 20px; 
+                            background: rgba(0,0,0,0.1); cursor: grab; border-radius: 4px 0 0 4px; display: flex; align-items: center; justify-content: center;"
+                     draggable="true"
+                     ondragstart="CalendarApp.dragStart(event, '${apt.id}')"
+                     ondragend="CalendarApp.dragEnd(event)"
+                     title="Перетащите чтобы переместить">
+                    ⋮⋮
                 </div>
-                <div style="font-size: 12px;">${apt.service.name}</div>
-                <div style="font-size: 10px; color: #666;">${statusText}</div>
+                
+                <div class="clickable-area" 
+                     style="margin-left: 25px; cursor: pointer;"
+                     onclick="CalendarApp.showAppointmentDetails(${JSON.stringify(apt).replace(/"/g, '&quot;')})">
+                    <div style="display: flex; justify-content: space-between;">
+                        <strong>${apt.client.firstName}</strong>
+                        <small>${timeStr}</small>
+                    </div>
+                    <div style="font-size: 12px;">${apt.service.name}</div>
+                    <div style="font-size: 10px; color: #666;">${statusText}</div>
+                </div>
             </div>
-        </div>
-    `;
+        `;
     },
 
     renderBlockItem: function(block) {
@@ -537,7 +365,553 @@ const CalendarApp = {
         `;
     },
 
-    // Навигация
+    // ========== ДЕТАЛИ КЛИЕНТА ==========
+
+    showAppointmentDetails: function(appointment) {
+        console.log('Клик по записи:', appointment);
+
+        this.selectedAppointment = appointment;
+        this.showLoadingModal();
+
+        fetch(`/api/clients/${appointment.client.id}/details`, {
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            }
+        })
+            .then(response => {
+                if (!response.ok) throw new Error('Ошибка загрузки: ' + response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('Получены данные клиента:', data);
+                this.closeLoadingModal();
+
+                if (data.success) {
+                    this.selectedClient = data.data.client;
+                    this.showClientModal(data.data);
+                } else {
+                    alert('Ошибка: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка:', error);
+                this.closeLoadingModal();
+                alert('Ошибка соединения: ' + error.message);
+            });
+    },
+
+    showClientModal: function(clientData) {
+        console.log('showClientModal вызван с данными:', clientData);
+
+        this.closeLoadingModal();
+        this.closeClientModal();
+
+        const client = clientData.client;
+        const stats = clientData.stats;
+
+        const modal = document.createElement('div');
+        modal.id = 'client-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background-color: rgba(0, 0, 0, 0.7) !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            z-index: 9999999 !important;
+        `;
+
+        const content = document.createElement('div');
+        content.style.cssText = `
+            background: white !important;
+            width: 700px !important;
+            max-height: 85vh !important;
+            overflow-y: auto !important;
+            border-radius: 12px !important;
+            padding: 25px !important;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3) !important;
+            position: relative !important;
+        `;
+
+        // Форматируем историю записей
+        const recentHtml = clientData.recentAppointments && clientData.recentAppointments.length > 0
+            ? clientData.recentAppointments.map(apt => `
+                <div style="padding: 10px; margin: 5px 0; background: #f8f9fa; border-left: 3px solid #007bff; border-radius: 0 4px 4px 0;">
+                    <div><strong>${apt.startTime}</strong> — ${apt.service.name}</div>
+                    <div style="font-size: 12px;">💰 ${apt.service.price} руб | ${this.getStatusText(apt.status)}</div>
+                </div>
+            `).join('')
+            : '<div style="padding: 15px; text-align: center; color: #999;">📭 Нет истории посещений</div>';
+
+        // Форматируем будущие записи
+        const upcomingHtml = clientData.upcomingAppointments && clientData.upcomingAppointments.length > 0
+            ? clientData.upcomingAppointments.map(apt => `
+                <div style="padding: 10px; margin: 5px 0; background: #e8f4fd; border-left: 3px solid #007bff;">
+                    <div><strong>${apt.startTime}</strong> — ${apt.service.name}</div>
+                    <div style="font-size: 12px;">💰 ${apt.service.price} руб</div>
+                </div>
+            `).join('')
+            : '<div style="padding: 15px; text-align: center; color: #999;">📅 Нет предстоящих записей</div>';
+
+        content.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 24px;">👤 ${client.firstName} ${client.lastName || ''}</h2>
+                <button onclick="CalendarApp.closeClientModal()" style="border: none; background: none; font-size: 30px; cursor: pointer;">×</button>
+            </div>
+            
+            <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <div style="color: #666; font-size: 12px;">📞 ТЕЛЕФОН</div>
+                        <div style="font-size: 18px; font-weight: bold;">${client.phone || 'не указан'}</div>
+                    </div>
+                    <div>
+                        <div style="color: #666; font-size: 12px;">🎂 ДЕНЬ РОЖДЕНИЯ</div>
+                        <div>${client.birthDate || 'не указан'}</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+                <div style="background: #007bff; color: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold;">${stats.totalVisits || 0}</div>
+                    <div>Визитов</div>
+                </div>
+                <div style="background: #28a745; color: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold;">${stats.totalSpent || 0} ₽</div>
+                    <div>Потрачено</div>
+                </div>
+                <div style="background: #ffc107; color: #333; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 24px; font-weight: bold;">${stats.attendanceRate || 0}%</div>
+                    <div>Посещаемость</div>
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin: 0 0 10px 0;">📊 Детальная статистика</h3>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px;">
+                    <div>Средний чек: <strong>${stats.averageBill || 0} ₽</strong></div>
+                    <div>Любимая услуга: <strong>${stats.favoriteService || 'нет данных'}</strong></div>
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin: 0 0 10px 0;">📅 Ближайшие записи</h3>
+                ${upcomingHtml}
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin: 0 0 10px 0;">📋 История посещений</h3>
+                ${recentHtml}
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button onclick="CalendarApp.editClient(${client.id})" 
+                        style="flex: 1; padding: 12px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    ✏️ Редактировать
+                </button>
+                <button onclick="CalendarApp.createAppointmentForClient(${client.id})" 
+                        style="flex: 1; padding: 12px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    ➕ Новая запись
+                </button>
+            </div>
+        `;
+
+        modal.appendChild(content);
+        document.body.appendChild(modal);
+
+        modal.onclick = function(e) {
+            if (e.target === modal) {
+                CalendarApp.closeClientModal();
+            }
+        };
+    },
+
+    closeClientModal: function() {
+        const modal = document.getElementById('client-modal');
+        if (modal) modal.remove();
+    },
+
+    showLoadingModal: function() {
+        this.closeLoadingModal();
+
+        const modal = document.createElement('div');
+        modal.id = 'loading-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999999;
+        `;
+        modal.innerHTML = '<div style="background: white; padding: 30px; border-radius: 10px;">⏳ Загрузка...</div>';
+        document.body.appendChild(modal);
+    },
+
+    closeLoadingModal: function() {
+        const modal = document.getElementById('loading-modal');
+        if (modal) modal.remove();
+    },
+
+    // ========== РЕДАКТИРОВАНИЕ КЛИЕНТА (НОВОЕ) ==========
+
+    editClient: function(clientId) {
+        console.log('Редактирование клиента:', clientId);
+        this.closeClientModal();
+
+        if (!this.selectedClient) {
+            alert('Ошибка: данные клиента не найдены');
+            return;
+        }
+
+        this.showEditClientForm(this.selectedClient);
+    },
+
+    showEditClientForm: function(client) {
+        const modal = document.createElement('div');
+        modal.id = 'edit-client-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: rgba(0, 0, 0, 0.7) !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            z-index: 9999999 !important;
+        `;
+
+        const form = document.createElement('div');
+        form.style.cssText = `
+            background: white !important;
+            width: 500px !important;
+            border-radius: 12px !important;
+            padding: 30px !important;
+        `;
+
+        // Формируем дату для input type="date"
+        let birthDateValue = '';
+        if (client.birthDate) {
+            const [day, month, year] = client.birthDate.split('.');
+            birthDateValue = `${year}-${month}-${day}`;
+        }
+
+        form.innerHTML = `
+            <h2 style="margin-top: 0;">✏️ Редактирование клиента</h2>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Имя:</label>
+                <input type="text" id="edit-firstname" value="${client.firstName || ''}" 
+                       style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Фамилия:</label>
+                <input type="text" id="edit-lastname" value="${client.lastName || ''}" 
+                       style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Телефон:</label>
+                <input type="text" id="edit-phone" value="${client.phone || ''}" 
+                       style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Дата рождения:</label>
+                <input type="date" id="edit-birthdate" value="${birthDateValue}" 
+                       style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px;">Заметки:</label>
+                <textarea id="edit-notes" rows="4" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">${client.notes || ''}</textarea>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button onclick="CalendarApp.saveClient(${client.id})" 
+                        style="flex: 1; padding: 12px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    💾 Сохранить
+                </button>
+                <button onclick="CalendarApp.closeEditClientModal()" 
+                        style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    ❌ Отмена
+                </button>
+            </div>
+        `;
+
+        modal.appendChild(form);
+        document.body.appendChild(modal);
+
+        modal.onclick = function(e) {
+            if (e.target === modal) {
+                CalendarApp.closeEditClientModal();
+            }
+        };
+    },
+
+    closeEditClientModal: function() {
+        const modal = document.getElementById('edit-client-modal');
+        if (modal) modal.remove();
+    },
+
+    saveClient: function(clientId) {
+        // Собираем данные из формы
+        const firstName = document.getElementById('edit-firstname').value;
+        const lastName = document.getElementById('edit-lastname').value;
+        const phone = document.getElementById('edit-phone').value;
+        const birthDateInput = document.getElementById('edit-birthdate').value;
+        const notes = document.getElementById('edit-notes').value;
+
+        // Конвертируем дату из YYYY-MM-DD в DD.MM.YYYY
+        let birthDate = null;
+        if (birthDateInput) {
+            const [year, month, day] = birthDateInput.split('-');
+            birthDate = `${day}.${month}.${year}`;
+        }
+
+        const data = {
+            firstName: firstName || null,
+            lastName: lastName || null,
+            phone: phone || null,
+            birthDate: birthDate,
+            notes: notes || null
+        };
+
+        fetch(`/api/clients/${clientId}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Данные клиента обновлены');
+                    this.closeEditClientModal();
+                    // Обновляем данные клиента в карточке
+                    this.loadTimeline();
+                } else {
+                    alert('❌ Ошибка: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('❌ Ошибка соединения: ' + error.message);
+            });
+    },
+
+    // ========== СОЗДАНИЕ ЗАПИСИ ДЛЯ КЛИЕНТА (НОВОЕ) ==========
+
+    createAppointmentForClient: function(clientId) {
+        console.log('Создание записи для клиента:', clientId);
+        this.closeClientModal();
+
+        // Получаем список услуг для выпадающего списка
+        fetch('/api/services', {
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.showCreateAppointmentForm(clientId, data.data);
+                } else {
+                    alert('Ошибка загрузки услуг');
+                }
+            });
+    },
+
+    showCreateAppointmentForm: function(clientId, services) {
+        const modal = document.createElement('div');
+        modal.id = 'create-appointment-modal';
+        modal.style.cssText = `
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: rgba(0, 0, 0, 0.7) !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            z-index: 9999999 !important;
+        `;
+
+        const form = document.createElement('div');
+        form.style.cssText = `
+            background: white !important;
+            width: 500px !important;
+            border-radius: 12px !important;
+            padding: 30px !important;
+        `;
+
+        // Создаем options для select
+        const serviceOptions = services.map(s =>
+            `<option value="${s.id}">${s.name} (${s.durationMinutes} мин, ${s.price} ₽)</option>`
+        ).join('');
+
+        form.innerHTML = `
+            <h2 style="margin-top: 0;">📅 Новая запись</h2>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Услуга:</label>
+                <select id="appointment-service" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+                    ${serviceOptions}
+                </select>
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Дата:</label>
+                <input type="date" id="appointment-date" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px;">Время:</label>
+                <input type="time" id="appointment-time" value="12:00" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 5px;">Заметки:</label>
+                <textarea id="appointment-notes" rows="3" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;"></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button onclick="CalendarApp.saveAppointmentForClient(${clientId})" 
+                        style="flex: 1; padding: 12px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    💾 Создать запись
+                </button>
+                <button onclick="CalendarApp.closeCreateAppointmentModal()" 
+                        style="flex: 1; padding: 12px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    ❌ Отмена
+                </button>
+            </div>
+        `;
+
+        modal.appendChild(form);
+        document.body.appendChild(modal);
+
+        modal.onclick = function(e) {
+            if (e.target === modal) {
+                CalendarApp.closeCreateAppointmentModal();
+            }
+        };
+    },
+
+    closeCreateAppointmentModal: function() {
+        const modal = document.getElementById('create-appointment-modal');
+        if (modal) modal.remove();
+    },
+
+    saveAppointmentForClient: function(clientId) {
+        const serviceId = document.getElementById('appointment-service').value;
+        const date = document.getElementById('appointment-date').value;
+        const time = document.getElementById('appointment-time').value;
+        const notes = document.getElementById('appointment-notes').value;
+
+        if (!date || !time) {
+            alert('Выберите дату и время');
+            return;
+        }
+
+        // Конвертируем дату и время в нужный формат (DD.MM.YYYY HH:MM)
+        const [year, month, day] = date.split('-');
+        const formattedDateTime = `${day}.${month}.${year} ${time}`;
+
+        const request = {
+            serviceId: parseInt(serviceId),
+            startTime: formattedDateTime,
+            notes: notes || null
+        };
+
+        fetch(`/api/clients/${clientId}/appointments`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(request)
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Запись создана');
+                    this.closeCreateAppointmentModal();
+                    this.loadTimeline(); // Обновляем ленту
+                } else {
+                    alert('❌ Ошибка: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('❌ Ошибка соединения: ' + error.message);
+            });
+    },
+
+    // ========== DRAG & DROP ==========
+
+    dragStart: function(event, appointmentId) {
+        event.stopPropagation();
+        event.dataTransfer.setData('text/plain', appointmentId);
+        event.dataTransfer.effectAllowed = 'move';
+        this.draggedAppointmentId = appointmentId;
+        event.target.classList.add('dragging');
+    },
+
+    dragEnd: function(event) {
+        event.target.classList.remove('dragging');
+        this.draggedAppointmentId = null;
+    },
+
+    dropOnDay: function(event, targetDateStr) {
+        event.preventDefault();
+
+        const appointmentId = this.draggedAppointmentId;
+        if (!appointmentId) return;
+
+        const targetTime = prompt('Введите время (например, 14:30):', '12:00');
+        if (!targetTime) return;
+
+        const newDateTime = `${targetDateStr} ${targetTime}`;
+        this.moveAppointment(appointmentId, newDateTime);
+    },
+
+    moveAppointment: function(appointmentId, newDateTime) {
+        const formattedDateTime = this.formatDateTimeForApi(newDateTime);
+
+        fetch(`/api/appointments/${appointmentId}/move?newStartTime=${encodeURIComponent(formattedDateTime)}`, {
+            method: 'PATCH',
+            headers: {
+                'Authorization': 'Bearer ' + localStorage.getItem('token')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Запись перемещена');
+                    this.loadTimeline();
+                } else {
+                    alert('❌ Ошибка: ' + data.message);
+                }
+            })
+            .catch(error => {
+                alert('❌ Ошибка соединения: ' + error.message);
+            });
+    },
+
+    // ========== НАВИГАЦИЯ ==========
+
     prevWeek: function() {
         const date = new Date(this.currentStartDate);
         date.setDate(date.getDate() - this.daysCount);
@@ -560,210 +934,6 @@ const CalendarApp = {
     changeDaysCount: function() {
         this.daysCount = parseInt(document.getElementById('daysCountSelect').value);
         this.loadTimeline();
-    },
-
-    // Вспомогательные методы
-    showAppointmentDetails: function(appointment) {
-        console.log('Клик по записи:', appointment);
-
-        // Сохраняем текущую запись
-        this.selectedAppointment = appointment;
-
-        // Показываем индикатор загрузки (вместо alert)
-        this.showLoadingModal();
-
-        // Загружаем детальную информацию о клиенте
-        fetch(`/api/clients/${appointment.client.id}/details`, {
-            headers: {
-                'Authorization': 'Bearer ' + localStorage.getItem('token')
-            }
-        })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Ошибка загрузки: ' + response.status);
-                }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Получены данные клиента:', data);
-
-                // Закрываем индикатор загрузки
-                this.closeLoadingModal();
-
-                if (data.success) {
-                    // Показываем модальное окно с данными
-                    this.showClientModal(data.data);
-                } else {
-                    alert('Ошибка: ' + data.message);
-                }
-            })
-            .catch(error => {
-                console.error('Ошибка:', error);
-                this.closeLoadingModal();
-                alert('Ошибка соединения: ' + error.message);
-            });
-    },
-
-    // Новый метод для показа индикатора загрузки
-    showLoadingModal: function() {
-        // Удаляем предыдущий индикатор, если есть
-        this.closeLoadingModal();
-
-        const loadingHtml = `
-        <div id="loading-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
-            <div style="background: white; padding: 30px; border-radius: 10px; text-align: center;">
-                <div style="font-size: 40px; margin-bottom: 20px;">⏳</div>
-                <div style="font-size: 18px;">Загрузка данных клиента...</div>
-            </div>
-        </div>
-    `;
-
-        const modalContainer = document.createElement('div');
-        modalContainer.innerHTML = loadingHtml;
-        document.body.appendChild(modalContainer.firstChild);
-    },
-
-    // Новый метод для закрытия индикатора загрузки
-    closeLoadingModal: function() {
-        const modal = document.getElementById('loading-modal');
-        if (modal) modal.remove();
-    },
-
-    showClientModal: function(clientData) {
-        console.log('showClientModal вызван с данными:', clientData);
-
-        this.closeLoadingModal();
-        this.closeClientModal();
-
-        // Создаем модальное окно с максимально явными стилями
-        const modal = document.createElement('div');
-        modal.id = 'client-modal';
-
-        // Максимально явные стили
-        modal.style.cssText = `
-        position: fixed !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        background-color: rgba(0, 0, 0, 0.7) !important;
-        display: flex !important;
-        justify-content: center !important;
-        align-items: center !important;
-        z-index: 9999999 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        box-sizing: border-box !important;
-    `;
-
-        const content = document.createElement('div');
-        content.style.cssText = `
-        background: white !important;
-        width: 600px !important;
-        max-height: 80vh !important;
-        overflow-y: auto !important;
-        border-radius: 12px !important;
-        padding: 30px !important;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.3) !important;
-        position: relative !important;
-        z-index: 10000000 !important;
-    `;
-
-        // Собираем данные
-        const client = clientData.client;
-        const stats = clientData.stats;
-
-        // Простой, но информативный контент
-        content.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h2 style="margin: 0; font-size: 24px;">👤 ${client.firstName} ${client.lastName || ''}</h2>
-            <button onclick="CalendarApp.closeClientModal()" 
-                    style="border: none; background: none; font-size: 30px; cursor: pointer; padding: 0 10px;">
-                ×
-            </button>
-        </div>
-        
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div>
-                    <div style="color: #666; font-size: 12px;">📞 ТЕЛЕФОН</div>
-                    <div style="font-size: 18px; font-weight: bold;">${client.phone || 'не указан'}</div>
-                </div>
-                <div>
-                    <div style="color: #666; font-size: 12px;">🎂 ДЕНЬ РОЖДЕНИЯ</div>
-                    <div>${client.birthDate || 'не указан'}</div>
-                </div>
-            </div>
-        </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 20px;">
-            <div style="background: #007bff; color: white; padding: 15px; border-radius: 8px; text-align: center;">
-                <div style="font-size: 24px; font-weight: bold;">${stats.totalVisits || 0}</div>
-                <div style="font-size: 12px;">Визитов</div>
-            </div>
-            <div style="background: #28a745; color: white; padding: 15px; border-radius: 8px; text-align: center;">
-                <div style="font-size: 24px; font-weight: bold;">${stats.totalSpent || 0} ₽</div>
-                <div style="font-size: 12px;">Потрачено</div>
-            </div>
-            <div style="background: #ffc107; color: #333; padding: 15px; border-radius: 8px; text-align: center;">
-                <div style="font-size: 24px; font-weight: bold;">${stats.attendanceRate || 0}%</div>
-                <div style="font-size: 12px;">Посещаемость</div>
-            </div>
-        </div>
-        
-        <h3 style="margin: 20px 0 10px;">📋 Последние записи</h3>
-        ${clientData.recentAppointments.map(apt => `
-            <div style="padding: 10px; margin: 5px 0; background: #f8f9fa; border-left: 3px solid #007bff;">
-                <div><strong>${apt.startTime}</strong> — ${apt.service.name}</div>
-                <div style="font-size: 12px;">💰 ${apt.service.price} руб</div>
-            </div>
-        `).join('')}
-    `;
-
-        modal.appendChild(content);
-        document.body.appendChild(modal);
-
-        console.log('Модальное окно создано:', modal);
-        console.log('Стили модального окна:', window.getComputedStyle(modal));
-        console.log('display:', window.getComputedStyle(modal).display);
-        console.log('visibility:', window.getComputedStyle(modal).visibility);
-        console.log('opacity:', window.getComputedStyle(modal).opacity);
-        console.log('z-index:', window.getComputedStyle(modal).zIndex);
-
-        // Закрытие по клику на фон
-        modal.onclick = function(e) {
-            if (e.target === modal) {
-                CalendarApp.closeClientModal();
-            }
-        };
-    },
-
-    closeClientModal: function() {
-        const modal = document.getElementById('client-modal');
-        if (modal) {
-            modal.remove();
-            console.log('Модальное окно удалено');
-        }
-    },
-
-    // Добавить новый метод для создания записи для клиента
-    createAppointmentForClient: function(clientId) {
-        this.closeClientModal();
-        // TODO: открыть форму создания записи для этого клиента
-        alert('Создание записи для клиента ' + clientId + ' (будет реализовано)');
-    },
-
-    editClient: function(clientId) {
-        alert('Редактирование клиента (будет реализовано)');
-        this.closeClientModal();
-    },
-
-    callClient: function(phone) {
-        if (phone && phone !== 'не указан') {
-            window.location.href = `tel:${phone}`;
-        } else {
-            alert('Номер телефона не указан');
-        }
     },
 
     showAddAppointmentForm: function(dateStr) {
@@ -794,110 +964,74 @@ const CalendarApp = {
             });
     },
 
+    // ========== ФОРМАТИРОВАНИЕ ==========
+
     formatDate: function(dateStr) {
         if (!dateStr) return '';
-
-        // Если дата уже в формате dd.MM.yyyy, возвращаем как есть
         if (dateStr.includes('.') && dateStr.split('.').length === 3) {
             return dateStr;
         }
-
-        // Если дата в ISO формате (yyyy-MM-dd)
         if (dateStr.includes('-')) {
-            const parts = dateStr.split('-');
-            if (parts.length === 3) {
-                const [year, month, day] = parts;
-                // Проверяем, что это числа
-                if (!isNaN(parseInt(year)) && !isNaN(parseInt(month)) && !isNaN(parseInt(day))) {
-                    return `${day}.${month}.${year}`;
-                }
-            }
+            const [year, month, day] = dateStr.split('-');
+            return `${day}.${month}.${year}`;
         }
-
-        // Если дата в формате с точками, но с точками на конце (как в вашем случае)
-        // "20.02.2026." - удаляем точку в конце
-        if (dateStr.includes('.') && dateStr.endsWith('.')) {
-            const cleanStr = dateStr.slice(0, -1);
-            const parts = cleanStr.split('.');
-            if (parts.length === 3) {
-                return cleanStr; // Уже в правильном формате, просто без точки в конце
-            }
-        }
-
-        console.warn('Неизвестный формат даты:', dateStr);
         return dateStr;
     },
 
     formatDateForApi: function(dateStr) {
         if (!dateStr) return '';
-
-        // Если дата уже в формате dd.MM.yyyy, возвращаем как есть
         if (dateStr.includes('.') && dateStr.split('.').length === 3) {
-            // Убираем возможную точку в конце
-            return dateStr.endsWith('.') ? dateStr.slice(0, -1) : dateStr;
+            return dateStr;
         }
-
-        // Если в ISO (yyyy-MM-dd), конвертируем
         if (dateStr.includes('-')) {
             const [year, month, day] = dateStr.split('-');
             return `${day}.${month}.${year}`;
         }
-
         return dateStr;
+    },
+
+    formatDateRange: function(startDate, endDate) {
+        const start = this.formatDate(startDate);
+        const end = this.formatDate(endDate);
+        return `${start} — ${end}`;
+    },
+
+    formatDateTimeForApi: function(dateTimeStr) {
+        if (!dateTimeStr) return '';
+        if (dateTimeStr.includes('-')) {
+            const [datePart, timePart] = dateTimeStr.split(' ');
+            const [year, month, day] = datePart.split('-');
+            return `${day}.${month}.${year} ${timePart}`;
+        }
+        return dateTimeStr;
     },
 
     getDayName: function(dateStr) {
         if (!dateStr) return '';
-
         try {
-            // Обрабатываем разные форматы
             let year, month, day;
-
             if (dateStr.includes('-')) {
                 [year, month, day] = dateStr.split('-');
             } else if (dateStr.includes('.')) {
-                // Убираем точку в конце, если есть
-                const cleanStr = dateStr.endsWith('.') ? dateStr.slice(0, -1) : dateStr;
-                [day, month, year] = cleanStr.split('.');
-            } else {
-                return '';
+                [day, month, year] = dateStr.split('.');
             }
-
-            // Создаем дату (месяцы в JS от 0 до 11)
             const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-
-            // Проверяем, что дата валидна
-            if (isNaN(date.getTime())) {
-                return '';
-            }
-
             const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
             return days[date.getDay()];
         } catch (e) {
-            console.error('Ошибка в getDayName для', dateStr, e);
             return '';
         }
     },
 
     isToday: function(dateStr) {
         if (!dateStr) return false;
-
-        try {
-            const today = new Date();
-            const todayStr = today.toISOString().split('T')[0]; // yyyy-MM-dd
-
-            // Приводим проверяемую дату к ISO формату
-            let compareDate = dateStr;
-            if (dateStr.includes('.')) {
-                const cleanStr = dateStr.endsWith('.') ? dateStr.slice(0, -1) : dateStr;
-                const [day, month, year] = cleanStr.split('.');
-                compareDate = `${year}-${month}-${day}`;
-            }
-
-            return compareDate === todayStr;
-        } catch (e) {
-            return false;
+        const today = new Date().toISOString().split('T')[0];
+        let compareDate = dateStr;
+        if (dateStr.includes('.')) {
+            const [day, month, year] = dateStr.split('.');
+            compareDate = `${year}-${month}-${day}`;
         }
+        return compareDate === today;
     },
 
     getStatusClass: function(status) {
@@ -933,8 +1067,6 @@ const CalendarApp = {
     }
 };
 
-// Инициализация приложения
+// Инициализация
 CalendarApp.init();
-
-// Для отладки
 window.CalendarApp = CalendarApp;

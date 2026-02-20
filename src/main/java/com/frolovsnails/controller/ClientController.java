@@ -1,24 +1,26 @@
 package com.frolovsnails.controller;
 
+import com.frolovsnails.dto.request.CreateMasterAppointmentRequest;
+import com.frolovsnails.dto.request.UpdateClientRequest;
 import com.frolovsnails.dto.response.ApiResponse;
 import com.frolovsnails.dto.response.AppointmentResponse;
 import com.frolovsnails.dto.response.ClientDetailsResponse;
 import com.frolovsnails.entity.Appointment;
 import com.frolovsnails.entity.AppointmentStatus;
 import com.frolovsnails.entity.Client;
+import com.frolovsnails.entity.User;
 import com.frolovsnails.mapper.AppointmentMapper;
 import com.frolovsnails.repository.AppointmentRepository;
 import com.frolovsnails.repository.ClientRepository;
 import com.frolovsnails.repository.UserRepository;
+import com.frolovsnails.service.AppointmentService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -38,6 +40,7 @@ public class ClientController {
     private final AppointmentRepository appointmentRepository;
     private final UserRepository userRepository;
     private final AppointmentMapper appointmentMapper;
+    private final AppointmentService appointmentService;
 
     @GetMapping("/{clientId}/details")
     @Operation(summary = "Получить детальную информацию о клиенте")
@@ -163,5 +166,59 @@ public class ClientController {
                 .filter(a -> a.getStatus() == AppointmentStatus.COMPLETED).count();
 
         return (double) completed / total * 100;
+    }
+
+    @PutMapping("/{clientId}")
+    @Operation(summary = "Обновить данные клиента")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> updateClient(
+            @PathVariable Long clientId,
+            @Valid @RequestBody UpdateClientRequest request) {
+
+        Client client = clientRepository.findById(clientId)
+                .orElseThrow(() -> new RuntimeException("Клиент не найден"));
+
+        // Обновляем данные
+        if (request.getFirstName() != null) {
+            client.setFirstName(request.getFirstName());
+        }
+        if (request.getLastName() != null) {
+            client.setLastName(request.getLastName());
+        }
+        if (request.getBirthDate() != null) {
+            client.setBirthDate(request.getBirthDate());
+        }
+        if (request.getNotes() != null) {
+            client.setNotes(request.getNotes());
+        }
+
+        // Обновляем телефон в User
+        if (request.getPhone() != null) {
+            User user = client.getUser();
+            user.setPhone(request.getPhone());
+            userRepository.save(user);
+        }
+
+        clientRepository.save(client);
+
+        return ResponseEntity.ok(ApiResponse.success("✅ Данные клиента обновлены"));
+    }
+
+    @PostMapping("/{clientId}/appointments")
+    @Operation(summary = "Создать запись для конкретного клиента")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> createAppointmentForClient(
+            @PathVariable Long clientId,
+            @Valid @RequestBody CreateMasterAppointmentRequest request) {
+
+        // Устанавливаем ID клиента из пути
+        request.setClientId(clientId);
+
+        Appointment appointment = appointmentService.createMasterAppointment(request);
+
+        return ResponseEntity.ok(ApiResponse.success(
+                "✅ Запись создана для клиента",
+                appointmentMapper.toResponse(appointment)
+        ));
     }
 }
