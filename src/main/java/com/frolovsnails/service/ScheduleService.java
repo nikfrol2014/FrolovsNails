@@ -47,13 +47,16 @@ public class ScheduleService {
         List<ScheduleBlock> blocks = getBlocksForDate(date);
 
         // 3. Генерируем слоты с шагом 2.5 часа от workStart
-        LocalDateTime currentSlot = LocalDateTime.of(date, availableDay.getWorkStart());
+        LocalDateTime workStart = LocalDateTime.of(date, availableDay.getWorkStart());
         LocalDateTime workEnd = LocalDateTime.of(date, availableDay.getWorkEnd());
 
         int slotStep = scheduleConfig.getClientSlotMinutes(); // 150 минут из конфига
-        currentSlot = currentSlot.plusMinutes(slotStep);
-
         List<LocalDateTime> availableSlots = new ArrayList<>();
+
+        // НАЧИНАЕМ С workStart, НЕ ПРОПУСКАЯ ПЕРВЫЙ СЛОТ
+        LocalDateTime currentSlot = workStart;
+
+//        currentSlot = currentSlot.plusMinutes(slotStep);
 
         while (currentSlot.isBefore(workEnd)) {
             // Проверяем, что слот не выходит за рабочий день с учетом длительности услуги
