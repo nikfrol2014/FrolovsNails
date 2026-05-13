@@ -1,0 +1,45 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-create-schedule-blocks
+      author: nikfrol2014
+      changes:
+        - createTable:
+            tableName: schedule_blocks
+            columns:
+              - column:
+                  name: id
+                  type: BIGSERIAL
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: start_time
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: end_time
+                  type: TIMESTAMP
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reason
+                  type: VARCHAR(50)
+              - column:
+                  name: notes
+                  type: TEXT
+              - column:
+                  name: is_blocked
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+
+        - createIndex:
+            tableName: schedule_blocks
+            indexName: idx_schedule_blocks_time_range
+            columns:
+              - column:
+                  name: start_time
+              - column:
+                  name: end_time

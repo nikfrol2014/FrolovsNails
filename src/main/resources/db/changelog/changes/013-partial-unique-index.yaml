@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 013-partial-unique-index
+      author: nikfrol2014
+      runInTransaction: false
+      changes:
+        - dropIndex:
+            indexName: idx_unique_active_appointment_time
+            tableName: appointments
+            failOnError: false
+        - sql:
+            sql: |
+              CREATE UNIQUE INDEX CONCURRENTLY idx_unique_active_appointment_time 
+              ON appointments (start_time) 
+              WHERE status NOT IN ('CANCELLED', 'COMPLETED')

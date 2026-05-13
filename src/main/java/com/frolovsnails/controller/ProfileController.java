@@ -97,6 +97,7 @@ public class ProfileController {
                 .orElseThrow(() -> new RuntimeException("Профиль клиента не найден"));
 
         // Обновляем данные клиента
+        //todo нужно избавиться от ситуаций, когда нужны все поля (например, использовать Map.ofEntries() либо, если null, то писать "")
         if (request.getFirstName() != null) {
             client.setFirstName(request.getFirstName());
         }

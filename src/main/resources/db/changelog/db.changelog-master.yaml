@@ -18,6 +18,9 @@ databaseChangeLog:
       file: classpath:/db/changelog/changes/006-replace-working-schedule.yaml
       relativeToChangelogFile: false
   - include:
+      file: classpath:/db/changelog/changes/007-create-schedule-blocks.yaml
+      relativeToChangelogFile: false
+  - include:
       file: classpath:/db/changelog/changes/009-drop-slot-id.yaml
       relativeToChangelogFile: false
   - include:
@@ -28,4 +31,7 @@ databaseChangeLog:
       relativeToChangelogFile: false
   - include:
       file: classpath:/db/changelog/changes/012-round-appointment-times.yaml
+      relativeToChangelogFile: false
+  - include:
+      file: classpath:/db/changelog/changes/013-partial-unique-index.yaml
       relativeToChangelogFile: false
