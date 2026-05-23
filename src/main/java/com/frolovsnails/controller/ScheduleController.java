@@ -1,6 +1,8 @@
 package com.frolovsnails.controller;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.frolovsnails.dto.annotation.MoscowDate;
+import com.frolovsnails.dto.annotation.MoscowTime;
 import com.frolovsnails.dto.request.CreateScheduleBlockRequest;
 import com.frolovsnails.dto.response.ApiResponse;
 import com.frolovsnails.entity.AvailableDay;
@@ -67,7 +69,7 @@ public class ScheduleController {
     @GetMapping("/availability")
     @Operation(summary = "Получить доступные слоты на конкретную дату (публичный)")
     public ResponseEntity<ApiResponse> getAvailableSlots(
-            @RequestParam LocalDate date,
+            @RequestParam @MoscowDate LocalDate date,
             @RequestParam Long serviceId) {
 
         try {
@@ -106,35 +108,12 @@ public class ScheduleController {
 
     // ========== АДМИН ЭНДПОИНТЫ (для мастера) ==========
 
-    @PostMapping("/available-days") //todo: какая-то хуйня с датой из сваггера //fix: добавление Schema решило проблему
-    @Operation(summary = "Добавить доступный день (только для ADMIN)")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse> addAvailableDay(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestParam @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "08:00") LocalTime workStart,
-            @RequestParam @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "15:00") LocalTime workEnd,
-            @RequestParam(required = false) String notes) {
-
-        try {
-            AvailableDay availableDay = scheduleService.addAvailableDay(date, workStart, workEnd, notes);
-
-            return ResponseEntity.ok(ApiResponse.success(
-                    "Доступный день добавлен",
-                    availableDay
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(
-                    ApiResponse.error("Ошибка добавления дня: " + e.getMessage())
-            );
-        }
-    }
-
     @GetMapping("/admin/available-days")
     @Operation(summary = "Получить все дни расписания (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getAllAvailableDays(
-            @RequestParam(required = false) LocalDate startDate,
-            @RequestParam(required = false) LocalDate endDate) {
+            @RequestParam(required = false) @MoscowDate LocalDate startDate,
+            @RequestParam(required = false) @MoscowDate LocalDate endDate) {
 
         try {
             List<AvailableDay> days;
@@ -162,13 +141,38 @@ public class ScheduleController {
         }
     }
 
+    @PostMapping("/admin/available-days") //todo: какая-то хуйня с датой из сваггера //fix: добавление Schema решило проблему
+    @Operation(summary = "Добавить доступный день (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> addAvailableDay(
+            @RequestParam @MoscowDate LocalDate date,
+            @RequestParam @MoscowTime @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "08:00") LocalTime workStart,
+            @RequestParam @MoscowTime @Schema(type = "string", pattern = "^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$", example = "15:00") LocalTime workEnd,
+            @RequestParam(required = false) String notes) {
+
+        try {
+            AvailableDay availableDay = scheduleService.addAvailableDay(date, workStart, workEnd, notes);
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Доступный день добавлен",
+                    availableDay
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка добавления дня: " + e.getMessage())
+            );
+        }
+    }
+
+
+
     @PutMapping("/available-days/{id}")
     @Operation(summary = "Обновить доступный день (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> updateAvailableDay(
             @PathVariable Long id,
-            @RequestParam LocalTime workStart,
-            @RequestParam LocalTime workEnd,
+            @RequestParam @MoscowTime LocalTime workStart,
+            @RequestParam @MoscowTime LocalTime workEnd,
             @RequestParam Boolean isAvailable,
             @RequestParam(required = false) String notes) {
 
@@ -204,7 +208,7 @@ public class ScheduleController {
     @Operation(summary = "Получить свободное время для ручной записи (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getMasterAvailableTime(
-            @RequestParam LocalDate date,
+            @RequestParam @MoscowDate LocalDate date,
             @RequestParam(required = false, defaultValue = "30") Integer minDuration) {
 
         try {
@@ -261,8 +265,8 @@ public class ScheduleController {
     @Operation(summary = "Получить все блокировки времени (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse> getScheduleBlocks(
-            @RequestParam(required = false) LocalDate startDate,
-            @RequestParam(required = false) LocalDate endDate) {
+            @RequestParam(required = false) @MoscowDate LocalDate startDate,
+            @RequestParam(required = false) @MoscowDate LocalDate endDate) {
 
         List<ScheduleBlock> blocks;
 

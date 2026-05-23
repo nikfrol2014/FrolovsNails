@@ -947,7 +947,7 @@ const CalendarApp = {
         const workEnd = prompt('Введите время окончания (например, 19:00)', '19:00');
         if (!workEnd) return;
 
-        fetch(`/api/schedule/available-days?date=${dateStr}&workStart=${workStart}&workEnd=${workEnd}`, {
+        fetch(`/api/schedule/admin/available-days?date=${dateStr}&workStart=${workStart}&workEnd=${workEnd}`, {
             method: 'POST',
             headers: {
                 'Authorization': 'Bearer ' + localStorage.getItem('token')
@@ -961,6 +961,9 @@ const CalendarApp = {
                 } else {
                     alert('❌ Ошибка: ' + data.message);
                 }
+            })
+            .catch(error => {
+                alert('❌ Ошибка соединения: ' + error.message);
             });
     },
 
