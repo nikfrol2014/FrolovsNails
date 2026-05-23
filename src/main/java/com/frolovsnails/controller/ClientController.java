@@ -5,6 +5,7 @@ import com.frolovsnails.dto.request.UpdateClientRequest;
 import com.frolovsnails.dto.response.ApiResponse;
 import com.frolovsnails.dto.response.AppointmentResponse;
 import com.frolovsnails.dto.response.ClientDetailsResponse;
+import com.frolovsnails.dto.response.ClientListDto;
 import com.frolovsnails.entity.Appointment;
 import com.frolovsnails.entity.AppointmentStatus;
 import com.frolovsnails.entity.Client;
@@ -18,6 +19,12 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +35,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.logging.ErrorManager;
 import java.util.stream.Collectors;
+
 
 @RestController
 @RequestMapping("/api/clients")
@@ -41,6 +50,8 @@ public class ClientController {
     private final UserRepository userRepository;
     private final AppointmentMapper appointmentMapper;
     private final AppointmentService appointmentService;
+
+    private static final Logger log = LoggerFactory.getLogger(ClientController.class);
 
     @GetMapping("/{clientId}/details")
     @Operation(summary = "Получить детальную информацию о клиенте")
@@ -168,6 +179,7 @@ public class ClientController {
         return (double) completed / total * 100;
     }
 
+    // Обновление клиента с использованием Optional
     @PutMapping("/{clientId}")
     @Operation(summary = "Обновить данные клиента")
     @PreAuthorize("hasRole('ADMIN')")
@@ -175,33 +187,41 @@ public class ClientController {
             @PathVariable Long clientId,
             @Valid @RequestBody UpdateClientRequest request) {
 
-        Client client = clientRepository.findById(clientId)
-                .orElseThrow(() -> new RuntimeException("Клиент не найден"));
+        try {
+            Optional<Client> clientOpt = clientRepository.findById(clientId);
 
-        // Обновляем данные
-        if (request.getFirstName() != null) {
-            client.setFirstName(request.getFirstName());
-        }
-        if (request.getLastName() != null) {
-            client.setLastName(request.getLastName());
-        }
-        if (request.getBirthDate() != null) {
-            client.setBirthDate(request.getBirthDate());
-        }
-        if (request.getNotes() != null) {
-            client.setNotes(request.getNotes());
-        }
+            if (clientOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(
+                        ApiResponse.error("Клиент не найден")
+                );
+            }
 
-        // Обновляем телефон в User
-        if (request.getPhone() != null) {
-            User user = client.getUser();
-            user.setPhone(request.getPhone());
-            userRepository.save(user);
+            Client client = clientOpt.get();
+
+            // Обновляем данные клиента
+            Optional.ofNullable(request.getFirstName()).ifPresent(client::setFirstName);
+            Optional.ofNullable(request.getLastName()).ifPresent(client::setLastName);
+            Optional.ofNullable(request.getBirthDate()).ifPresent(client::setBirthDate);
+            Optional.ofNullable(request.getNotes()).ifPresent(client::setNotes);
+
+            // Обновляем телефон в User
+            Optional.ofNullable(request.getPhone())
+                    .ifPresent(phone -> {
+                        User user = client.getUser();
+                        user.setPhone(phone);
+                        userRepository.save(user);
+                    });
+
+            clientRepository.save(client);
+
+            return ResponseEntity.ok(ApiResponse.success("✅ Данные клиента обновлены"));
+
+        } catch (Exception e) {
+            log.error("Ошибка обновления клиента", e);
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка обновления клиента: " + e.getMessage())
+            );
         }
-
-        clientRepository.save(client);
-
-        return ResponseEntity.ok(ApiResponse.success("✅ Данные клиента обновлены"));
     }
 
     @PostMapping("/{clientId}/appointments")
@@ -221,4 +241,68 @@ public class ClientController {
                 appointmentMapper.toResponse(appointment)
         ));
     }
+
+    @GetMapping
+    @Operation(summary = "Получить список всех клиентов (только для ADMIN)")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> getAllClients(
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        try {
+            Pageable pageable = PageRequest.of(page, size, Sort.by("id").descending());
+            Page<Client> clientPage;
+
+            if (search != null && !search.isEmpty()) {
+                clientPage = clientRepository.findByFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCaseOrUser_PhoneContaining(
+                        search, search, search, pageable);
+            } else {
+                clientPage = clientRepository.findAll(pageable);
+            }
+
+            List<ClientListDto> result = clientPage.getContent().stream()
+                    .map(client -> ClientListDto.builder()
+                            .id(client.getId())
+                            .firstName(client.getFirstName())
+                            .lastName(client.getLastName())
+                            .phone(client.getUser().getPhone())
+                            .totalVisits(appointmentRepository.countByClientId(client.getId()))
+                            .build())
+                    .toList();
+
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Список клиентов",
+                    Map.of(
+                            "clients", result,
+                            "total", clientPage.getTotalElements(),
+                            "page", page,
+                            "size", size,
+                            "totalPages", clientPage.getTotalPages()
+                    )
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка получения списка клиентов: " + e.getMessage())
+            );
+        }
+    }
+
+
+    // Вспомогательный метод для преобразования Client -> ClientListDto
+    private ClientListDto convertToClientListDto(Optional<Client> client) {
+        ClientListDto dto = new ClientListDto();
+        dto.setId(client.get().getId());
+        dto.setFirstName(client.get().getFirstName());
+        dto.setLastName(client.get().getLastName());
+        dto.setPhone(client.get().getUser().getPhone());
+
+        // Подсчёт количества записей клиента
+        long totalVisits = appointmentRepository.countByClientId(client.get().getId());
+        dto.setTotalVisits((int)totalVisits);
+
+        return dto;
+    }
+
+
 }

@@ -2,10 +2,8 @@ package com.frolovsnails.repository;
 
 import com.frolovsnails.entity.Appointment;
 import com.frolovsnails.entity.AppointmentStatus;
-import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -96,4 +94,6 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
 
     @Query("SELECT a FROM Appointment a WHERE a.client.id = :clientId ORDER BY a.startTime DESC")
     List<Appointment> findByClientId(@Param("clientId") Long clientId);
+
+    int countByClientId(Long clientId);
 }

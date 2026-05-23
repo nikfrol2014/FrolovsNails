@@ -1,12 +1,15 @@
 package com.frolovsnails.repository;
 
 import com.frolovsnails.entity.Client;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -22,4 +25,9 @@ public interface ClientRepository extends JpaRepository<Client, Long> {
 
     @Query("SELECT CASE WHEN COUNT(c) > 0 THEN true ELSE false END FROM Client c WHERE c.user.id = :userId")
     boolean existsByUserId(@Param("userId") Long userId);
+
+    Page<Client> findAll(Pageable pageable);
+
+    Page<Client> findByFirstNameContainingIgnoreCaseOrLastNameContainingIgnoreCaseOrUser_PhoneContaining(
+            String firstName, String lastName, String phone, Pageable pageable);
 }
