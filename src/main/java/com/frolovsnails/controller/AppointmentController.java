@@ -326,6 +326,27 @@ public class AppointmentController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    // todo: ДА-ДА, Я ЗНАЮ ЧТО ТАК ДЕЛАТЬ НЕ ХОРОШО, НО МНЕ ПОХУЙ =))))
+    @PatchMapping("/{id}/notes")
+    @Operation(summary = "Обновить заметки мастера")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> updateMasterNotes(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> request) {
+        try {
+            Appointment appointment = appointmentRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Запись не найдена"));
+
+            String notes = request.get("masterNotes");
+            appointment.setMasterNotes(notes);
+            appointmentRepository.save(appointment);
+
+            return ResponseEntity.ok(ApiResponse.success("Заметки обновлены", appointment));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
+    }
+
     @PatchMapping("/{id}/status")
     @Operation(summary = "Изменить статус записи (только для ADMIN)")
     @PreAuthorize("hasRole('ADMIN')")
