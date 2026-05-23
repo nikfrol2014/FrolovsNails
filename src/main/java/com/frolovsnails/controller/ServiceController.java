@@ -34,6 +34,20 @@ public class ServiceController {
         ));
     }
 
+    @GetMapping("/all")
+    @Operation(summary = "Получить все услуги (включая неактивные) - только для ADMIN")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ApiResponse> getAllServicesForAdmin() {
+        try {
+            List<Service> services = serviceRepository.findAll();
+            return ResponseEntity.ok(ApiResponse.success("Список всех услуг", services));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(
+                    ApiResponse.error("Ошибка получения списка услуг: " + e.getMessage())
+            );
+        }
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Получить услугу по ID")
     public ResponseEntity<ApiResponse> getServiceById(@PathVariable Long id) {
