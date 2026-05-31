@@ -96,4 +96,22 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     List<Appointment> findByClientId(@Param("clientId") Long clientId);
 
     int countByClientId(Long clientId);
+
+    /**
+     * Получить все записи за период по дням
+     */
+    @Query("SELECT FUNCTION('DATE', a.startTime) as date, COUNT(a) as count, SUM(a.service.price) as revenue " +
+            "FROM Appointment a WHERE a.startTime BETWEEN :startDateTime AND :endDateTime " +
+            "AND a.status = 'COMPLETED' GROUP BY FUNCTION('DATE', a.startTime)")
+    List<Object[]> getDailyRevenueStats(@Param("startDateTime") LocalDateTime startDateTime,
+                                        @Param("endDateTime") LocalDateTime endDateTime);
+
+    /**
+     * Получить количество записей по часам
+     */
+    @Query("SELECT FUNCTION('HOUR', a.startTime) as hour, COUNT(a) as count " +
+            "FROM Appointment a WHERE a.startTime BETWEEN :startDateTime AND :endDateTime " +
+            "GROUP BY FUNCTION('HOUR', a.startTime)")
+    List<Object[]> getHourlyStats(@Param("startDateTime") LocalDateTime startDateTime,
+                                  @Param("endDateTime") LocalDateTime endDateTime);
 }
