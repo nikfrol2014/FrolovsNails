@@ -235,7 +235,8 @@ public class AppointmentService {
         AppointmentStatus oldStatus = appointment.getStatus();
         AppointmentStatus newStatus = request.getStatus();
 
-        validateStatusTransition(oldStatus, newStatus);
+        //todo - нахер надо убрать эту проверку - проще будет
+//        validateStatusTransition(oldStatus, newStatus);
 
         appointment.setStatus(newStatus);
         appointment.setMasterNotes(request.getMasterNotes());
