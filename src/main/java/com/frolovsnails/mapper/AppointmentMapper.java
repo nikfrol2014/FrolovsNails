@@ -16,22 +16,21 @@ public class AppointmentMapper {
                 .id(appointment.getId())
                 .client(appointment.getClient() != null ?
                         AppointmentResponse.ClientInfo.builder()
-                        .id(appointment.getClient().getId())
-                        .firstName(appointment.getClient().getFirstName())
-                        .lastName(appointment.getClient().getLastName())
-                        .phone(appointment.getClient().getUser() != null ?
-                                appointment.getClient().getUser().getPhone() : null)
-                        .build() : null)
+                                .id(appointment.getClient().getId())
+                                .firstName(appointment.getClient().getFirstName())
+                                .lastName(appointment.getClient().getLastName())
+                                .phone(appointment.getClient().getUser() != null ?
+                                        appointment.getClient().getUser().getPhone() : null)
+                                .build() : null)
                 .service(appointment.getService() != null ?
                         AppointmentResponse.ServiceInfo.builder()
-                        .id(appointment.getService().getId())
-                        .name(appointment.getService().getName())
-                        .description(appointment.getService().getDescription())
-                        .durationMinutes(appointment.getService().getDurationMinutes())
-                        .price(appointment.getService().getPrice())
-                        .category(appointment.getService().getCategory())
-                        .build() : null)
-                // УБИРАЕМ slot - теперь есть startTime и endTime
+                                .id(appointment.getService().getId())
+                                .name(appointment.getService().getName())
+                                .description(appointment.getService().getDescription())
+                                .durationMinutes(appointment.getService().getDurationMinutes())
+                                .price(appointment.getService().getPrice())
+                                .category(appointment.getService().getCategory())
+                                .build() : null)
                 .startTime(appointment.getStartTime())
                 .endTime(appointment.getEndTime())
                 .status(appointment.getStatus())
@@ -39,6 +38,10 @@ public class AppointmentMapper {
                 .masterNotes(appointment.getMasterNotes())
                 .createdAt(appointment.getCreatedAt())
                 .updatedAt(appointment.getUpdatedAt())
+                // НОВЫЕ ПОЛЯ ИЗ МЕТАДАННЫХ
+                .actualPrice(appointment.getActualPrice())
+                .actualServices(appointment.getActualServices())
+                .masterCompletionComment(appointment.getMasterCompletionComment())
                 .build();
     }
 }

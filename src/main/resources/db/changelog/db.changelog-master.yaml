@@ -35,3 +35,6 @@ databaseChangeLog:
   - include:
       file: classpath:/db/changelog/changes/013-partial-unique-index.yaml
       relativeToChangelogFile: false
+  - include:
+      file: classpath:/db/changelog/changes/014-add-metadata-to-appointments.yaml
+      relativeToChangelogFile: false

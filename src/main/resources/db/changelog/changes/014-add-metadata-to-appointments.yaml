@@ -1,0 +1,14 @@
+databaseChangeLog:
+  - changeSet:
+      id: 014-add-metadata-to-appointments
+      author: nikfrol2014
+      changes:
+        - addColumn:
+            tableName: appointments
+            columns:
+              - column:
+                  name: metadata
+                  type: jsonb
+                  defaultValue: "{}"
+                  constraints:
+                    nullable: false

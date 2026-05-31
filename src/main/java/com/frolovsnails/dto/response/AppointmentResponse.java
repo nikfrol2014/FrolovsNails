@@ -20,14 +20,19 @@ public class AppointmentResponse {
     private ClientInfo client;
     private ServiceInfo service;
     @MoscowDateTime
-    private LocalDateTime startTime;  // ДОБАВЛЯЕМ
+    private LocalDateTime startTime;
     @MoscowDateTime
-    private LocalDateTime endTime;    // ДОБАВЛЯЕМ
+    private LocalDateTime endTime;
     private AppointmentStatus status;
     private String clientNotes;
     private String masterNotes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    // НОВЫЕ ПОЛЯ ДЛЯ МЕТАДАННЫХ
+    private BigDecimal actualPrice;
+    private String actualServices;
+    private String masterCompletionComment;
 
     @Data
     @Builder
@@ -52,6 +57,4 @@ public class AppointmentResponse {
         private BigDecimal price;
         private String category;
     }
-
-    // УБИРАЕМ SlotInfo - больше не нужен
 }

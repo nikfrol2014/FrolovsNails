@@ -1,31 +1,31 @@
 package com.frolovsnails.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.frolovsnails.dto.annotation.MoscowDateTime;
-import com.frolovsnails.util.DateTimeUtils;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.frolovsnails.entity.AppointmentStatus;
+import com.frolovsnails.entity.Client;
+import com.frolovsnails.entity.Service;
+import com.vladmihalcea.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.Type;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
 @Entity
 @Table(name = "appointments")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-@NamedEntityGraphs({
-        @NamedEntityGraph(
-                name = "appointment.with-client-service",
-                attributeNodes = {
-                        @NamedAttributeNode("client"),
-                        @NamedAttributeNode("service")
-                }
-        )
-})
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Appointment {
+
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -33,29 +33,17 @@ public class Appointment {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "client_id", nullable = false)
-    @JsonIgnoreProperties({"appointments", "user"})
     private Client client;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "service_id", nullable = false)
-    @JsonIgnoreProperties({"appointments"})
     private Service service;
 
-    @Column(name = "is_manual")
-    private Boolean isManual = false; // false - запись через систему, true - ручная запись мастера
-
-    @Version
-    @Column(name = "version")
-    private Long version;
-
-    // ДОБАВЛЯЕМ startTime и endTime
     @Column(name = "start_time", nullable = false)
-    @MoscowDateTime
-    private LocalDateTime startTime;  // Например: 2024-01-15T11:30:00
+    private LocalDateTime startTime;
 
     @Column(name = "end_time", nullable = false)
-    @MoscowDateTime
-    private LocalDateTime endTime;    // Вычисляем: startTime + service.duration
+    private LocalDateTime endTime;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -68,36 +56,101 @@ public class Appointment {
     private String masterNotes;
 
     @Column(name = "created_at", nullable = false)
-    @MoscowDateTime
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
-    @MoscowDateTime
     private LocalDateTime updatedAt;
 
-//    @PrePersist
-//    protected void onCreate() {
-//        createdAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
-//        // endTime вычисляется в сервисе перед сохранением
-//    }
-//
-//    @PreUpdate
-//    protected void onUpdate() {
-//        updatedAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
-//    }
+    @Column(name = "is_manual")
+    private Boolean isManual = false;
+
+    @Version
+    @Column(name = "version")
+    private Long version;
+
+    // Новое поле для гибких метаданных
+    @Type(JsonBinaryType.class)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> metadata = new HashMap<>();
 
     @PrePersist
-    @PreUpdate
-    protected void roundTimes() {
-        createdAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
-        updatedAt = DateTimeUtils.truncateMillis(LocalDateTime.now());
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        if (metadata == null) {
+            metadata = new HashMap<>();
+        }
+    }
 
-        // Округляем до минут (отбрасываем секунды и наносекунды)
-        if (startTime != null) {
-            startTime = startTime.withSecond(0).withNano(0);
+    @PreUpdate
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+
+    // Удобные методы для работы с metadata
+    public void putMetadata(String key, Object value) {
+        if (metadata == null) {
+            metadata = new HashMap<>();
         }
-        if (endTime != null) {
-            endTime = endTime.withSecond(0).withNano(0);
+        metadata.put(key, value);
+    }
+
+    @SuppressWarnings("unchecked")
+    public <T> T getMetadata(String key, Class<T> type) {
+        if (metadata == null || !metadata.containsKey(key)) {
+            return null;
         }
+        Object value = metadata.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (type.isAssignableFrom(value.getClass())) {
+            return (T) value;
+        }
+        // Конвертация для чисел и других типов
+        if (type == BigDecimal.class && value instanceof Number) {
+            return (T) BigDecimal.valueOf(((Number) value).doubleValue());
+        }
+        return objectMapper.convertValue(value, type);
+    }
+
+    public String getMetadataAsJson() {
+        try {
+            return objectMapper.writeValueAsString(metadata);
+        } catch (JsonProcessingException e) {
+            return "{}";
+        }
+    }
+
+    public void setMetadataFromJson(String json) {
+        try {
+            this.metadata = objectMapper.readValue(json, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {
+            this.metadata = new HashMap<>();
+        }
+    }
+
+    // Вспомогательные методы для часто используемых метаданных
+    public BigDecimal getActualPrice() {
+        return getMetadata("actualPrice", BigDecimal.class);
+    }
+
+    public void setActualPrice(BigDecimal actualPrice) {
+        putMetadata("actualPrice", actualPrice);
+    }
+
+    public String getActualServices() {
+        return getMetadata("actualServices", String.class);
+    }
+
+    public void setActualServices(String actualServices) {
+        putMetadata("actualServices", actualServices);
+    }
+
+    public String getMasterCompletionComment() {
+        return getMetadata("masterCompletionComment", String.class);
+    }
+
+    public void setMasterCompletionComment(String comment) {
+        putMetadata("masterCompletionComment", comment);
     }
 }

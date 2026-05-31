@@ -12,10 +12,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
+import com.frolovsnails.entity.Appointment;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @org.springframework.stereotype.Service
@@ -234,15 +236,31 @@ public class AppointmentService {
         AppointmentStatus newStatus = request.getStatus();
 
         validateStatusTransition(oldStatus, newStatus);
+
         appointment.setStatus(newStatus);
         appointment.setMasterNotes(request.getMasterNotes());
 
-        Appointment updatedAppointment = appointmentRepository.save(appointment);
+        // При завершении записи сохраняем фактические данные в metadata
+        if (newStatus == AppointmentStatus.COMPLETED) {
+            if (request.getActualPrice() != null) {
+                appointment.setActualPrice(request.getActualPrice());
+            }
+            if (request.getActualServices() != null && !request.getActualServices().isEmpty()) {
+                appointment.setActualServices(request.getActualServices());
+            }
+            if (request.getMasterCompletionComment() != null) {
+                appointment.setMasterCompletionComment(request.getMasterCompletionComment());
+            }
+        }
 
-        log.info("Статус записи ID: {} изменен с {} на {}",
-                appointmentId, oldStatus, newStatus);
+        // Сохраняем дополнительные метаданные
+        if (request.getExtraMetadata() != null) {
+            for (Map.Entry<String, Object> entry : request.getExtraMetadata().entrySet()) {
+                appointment.putMetadata(entry.getKey(), entry.getValue());
+            }
+        }
 
-        return updatedAppointment;
+        return appointmentRepository.save(appointment);
     }
 
     @Transactional
@@ -319,23 +337,23 @@ public class AppointmentService {
     }
 
     private void validateStatusTransition(AppointmentStatus oldStatus, AppointmentStatus newStatus) {
-        // Определяем допустимые переходы статусов
         switch (oldStatus) {
             case CREATED -> {
                 if (newStatus != AppointmentStatus.PENDING &&
-                        newStatus != AppointmentStatus.CANCELLED) {
+                        newStatus != AppointmentStatus.CANCELLED &&
+                        newStatus != AppointmentStatus.COMPLETED) {
                     throw new RuntimeException("Неверный переход статуса: " + oldStatus + " -> " + newStatus);
                 }
             }
             case PENDING -> {
                 if (newStatus != AppointmentStatus.CONFIRMED &&
-                        newStatus != AppointmentStatus.CANCELLED) {
+                        newStatus != AppointmentStatus.CANCELLED &&
+                        newStatus != AppointmentStatus.COMPLETED) {
                     throw new RuntimeException("Неверный переход статуса: " + oldStatus + " -> " + newStatus);
                 }
             }
             case CONFIRMED -> {
-                if (newStatus != AppointmentStatus.COMPLETED &&
-                        newStatus != AppointmentStatus.CANCELLED) {
+                if (newStatus != AppointmentStatus.COMPLETED && newStatus != AppointmentStatus.CANCELLED) {
                     throw new RuntimeException("Неверный переход статуса: " + oldStatus + " -> " + newStatus);
                 }
             }
