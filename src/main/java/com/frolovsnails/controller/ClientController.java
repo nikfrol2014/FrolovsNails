@@ -35,9 +35,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.logging.ErrorManager;
 import java.util.stream.Collectors;
-
 
 @RestController
 @RequestMapping("/api/clients")
@@ -102,7 +100,6 @@ public class ClientController {
                 .birthDate(client.getBirthDate())
                 .notes(client.getNotes())
                 .registeredAt(client.getCreatedAt())
-//                .isVip(client.getIsVip() != null ? client.getIsVip() : false)
                 .build();
     }
 
@@ -121,17 +118,28 @@ public class ClientController {
         int cancelled = (int) appointments.stream()
                 .filter(a -> a.getStatus() == AppointmentStatus.CANCELLED).count();
 
-        // Сумма потраченного
+        // Сумма потраченного (используем actualPrice если есть, иначе цену из услуги)
         BigDecimal totalSpent = appointments.stream()
                 .filter(a -> a.getStatus() == AppointmentStatus.COMPLETED)
-                .map(a -> a.getService().getPrice())
+                .map(a -> {
+                    BigDecimal actualPrice = a.getActualPrice();
+                    return actualPrice != null ? actualPrice : a.getService().getPrice();
+                })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Любимая услуга
+        // Любимая услуга (с учетом фактически выполненных работ)
         Map<String, Long> serviceCount = appointments.stream()
                 .filter(a -> a.getStatus() == AppointmentStatus.COMPLETED)
+                .flatMap(a -> {
+                    String actualServices = a.getActualServices();
+                    if (actualServices != null && !actualServices.isEmpty()) {
+                        // Если есть фактические услуги, добавляем их в подсчет
+                        return List.of(actualServices).stream();
+                    }
+                    return List.of(a.getService().getName()).stream();
+                })
                 .collect(Collectors.groupingBy(
-                        a -> a.getService().getName(),
+                        s -> s,
                         Collectors.counting()
                 ));
 
@@ -153,14 +161,17 @@ public class ClientController {
                 .map(Appointment::getStartTime)
                 .max(LocalDateTime::compareTo);
 
+        // Средний чек (используем totalSpent который уже с actualPrice)
+        BigDecimal averageBill = completed > 0 ?
+                totalSpent.divide(BigDecimal.valueOf(completed), RoundingMode.HALF_UP) :
+                BigDecimal.ZERO;
+
         return ClientDetailsResponse.ClientStats.builder()
                 .totalVisits(appointments.size())
                 .cancelledVisits(cancelled)
-                .noShowVisits(0) // Пока не реализовано
+                .noShowVisits(0)
                 .totalSpent(totalSpent)
-                .averageBill(completed > 0 ?
-                        totalSpent.divide(BigDecimal.valueOf(completed), RoundingMode.HALF_UP) :
-                        BigDecimal.ZERO)
+                .averageBill(averageBill)
                 .firstVisitDate(firstVisit.map(LocalDateTime::toLocalDate).orElse(null))
                 .lastVisitDate(lastVisit.map(LocalDateTime::toLocalDate).orElse(null))
                 .favoriteService(favoriteService)
@@ -288,8 +299,6 @@ public class ClientController {
         }
     }
 
-
-    // Вспомогательный метод для преобразования Client -> ClientListDto
     private ClientListDto convertToClientListDto(Optional<Client> client) {
         ClientListDto dto = new ClientListDto();
         dto.setId(client.get().getId());
@@ -297,12 +306,9 @@ public class ClientController {
         dto.setLastName(client.get().getLastName());
         dto.setPhone(client.get().getUser().getPhone());
 
-        // Подсчёт количества записей клиента
         long totalVisits = appointmentRepository.countByClientId(client.get().getId());
         dto.setTotalVisits((int)totalVisits);
 
         return dto;
     }
-
-
 }
