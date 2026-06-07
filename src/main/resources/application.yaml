@@ -14,6 +14,12 @@ spring:
       date: dd.MM.yyyy
       date-time: dd.MM.yyyy HH:mm
       time: HH:mm
+  web:
+    resources:
+      static-locations:
+        - classpath:/static/
+        - file:./uploads/
+      add-mappings: true
 
   # Конфигурация PostgreSQL
   datasource:

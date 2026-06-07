@@ -105,7 +105,11 @@ public class SecurityConfig {
 
                                 // Ошибки
                                 "/error",
-                                "/error/**"
+                                "/error/**",
+
+                                // Статические файлы (слайдер, прайс-лист)
+                                "/uploads/**",
+                                "/uploads/slider/**"
                         ).permitAll()
 
                         // POST, PUT, DELETE для услуг требуют роли ADMIN
