@@ -114,4 +114,18 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
             "GROUP BY FUNCTION('HOUR', a.startTime)")
     List<Object[]> getHourlyStats(@Param("startDateTime") LocalDateTime startDateTime,
                                   @Param("endDateTime") LocalDateTime endDateTime);
+
+    // Найти все записи клиента по ID с сортировкой по дате (новые сверху)
+    @Query("SELECT a FROM Appointment a WHERE a.client.id = :clientId ORDER BY a.startTime DESC")
+    List<Appointment> findByClientIdOrderByStartTimeDesc(@Param("clientId") Long clientId);
+
+    // Найти записи клиента по ID и статусу
+    @Query("SELECT a FROM Appointment a WHERE a.client.id = :clientId AND a.status = :status ORDER BY a.startTime DESC")
+    List<Appointment> findByClientIdAndStatus(@Param("clientId") Long clientId, @Param("status") AppointmentStatus status);
+
+    // Найти записи клиента за период
+    @Query("SELECT a FROM Appointment a WHERE a.client.id = :clientId AND a.startTime BETWEEN :startDate AND :endDate ORDER BY a.startTime DESC")
+    List<Appointment> findByClientIdAndDateRange(@Param("clientId") Long clientId,
+                                                 @Param("startDate") LocalDateTime startDate,
+                                                 @Param("endDate") LocalDateTime endDate);
 }

@@ -9,10 +9,7 @@ import com.frolovsnails.dto.response.AppointmentResponse;
 import com.frolovsnails.dto.response.TimelineResponse;
 import com.frolovsnails.entity.*;
 import com.frolovsnails.mapper.AppointmentMapper;
-import com.frolovsnails.repository.AppointmentRepository;
-import com.frolovsnails.repository.AvailableDayRepository;
-import com.frolovsnails.repository.ServiceRepository;
-import com.frolovsnails.repository.UserRepository;
+import com.frolovsnails.repository.*;
 import com.frolovsnails.service.AppointmentService;
 import com.frolovsnails.service.ScheduleService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,6 +30,7 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -50,8 +48,60 @@ public class AppointmentController {
     private final AppointmentMapper appointmentMapper;
     private final UserRepository userRepository;
     private final AvailableDayRepository availableDayRepository;
+    private final ClientRepository clientRepository;
 
     // ========== КЛИЕНТСКИЕ ЭНДПОИНТЫ ==========
+
+    @GetMapping("/my/filtered")
+    @Operation(summary = "Получить мои записи с фильтрацией (для клиентов)")
+    @PreAuthorize("hasRole('CLIENT')")
+    public ResponseEntity<ApiResponse> getMyAppointmentsFiltered(
+            @RequestParam(required = false) AppointmentStatus status,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "dd.MM.yyyy") LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "dd.MM.yyyy") LocalDate endDate,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String phone = auth.getName();
+
+        Client client = clientRepository.findByUserPhone(phone)
+                .orElseThrow(() -> new RuntimeException("Клиент не найден"));
+
+        // Формируем запрос с учетом фильтров
+        List<Appointment> appointments;
+
+        if (startDate != null && endDate != null) {
+            // По диапазону дат
+            appointments = appointmentRepository.findByClientIdAndDateRange(
+                    client.getId(), startDate.atStartOfDay(), endDate.plusDays(1).atStartOfDay());
+        } else if (status != null) {
+            // По статусу
+            appointments = appointmentRepository.findByClientIdAndStatus(client.getId(), status);
+        } else {
+            // Все записи клиента
+            appointments = appointmentRepository.findByClientIdOrderByStartTimeDesc(client.getId());
+        }
+
+        // Пагинация вручную (упрощенно)
+        int start = page * size;
+        int end = Math.min(start + size, appointments.size());
+        List<Appointment> pagedList = start < appointments.size()
+                ? appointments.subList(start, end)
+                : Collections.emptyList();
+
+        Map<String, Object> response = Map.of(
+                "appointments", pagedList.stream()
+                        .map(appointmentMapper::toResponse)
+                        .toList(),
+                "total", appointments.size(),
+                "page", page,
+                "size", size,
+                "totalPages", (int) Math.ceil((double) appointments.size() / size)
+        );
+
+        return ResponseEntity.ok(ApiResponse.success("Записи загружены", response));
+    }
 
     @GetMapping("/client/available-slots")
     @Operation(summary = "Получить доступные слоты для записи (для клиентов)")
