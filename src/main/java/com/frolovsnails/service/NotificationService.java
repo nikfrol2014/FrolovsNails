@@ -167,4 +167,36 @@ public class NotificationService {
                         status);
         }
     }
+
+    // Уведомление мастеру, что клиент подтвердил запись
+    public void notifyMasterAppointmentConfirmed(Appointment appointment) {
+        User master = userRepository.findByRole(Role.ADMIN).orElse(null);
+
+        if (master != null && master.getFcmToken() != null) {
+            String title = "✅ Запись подтверждена клиентом!";
+            String body = String.format("%s %s подтвердил запись на %s в %s",
+                    appointment.getClient().getFirstName(),
+                    appointment.getClient().getLastName() != null ? appointment.getClient().getLastName() : "",
+                    appointment.getService().getName(),
+                    appointment.getStartTime().format(DateTimeFormatter.ofPattern("dd.MM HH:mm")));
+
+            sendNotification(master.getFcmToken(), title, body, "APPOINTMENT_CONFIRMED", appointment.getId());
+        }
+    }
+
+    // Уведомление мастеру, что клиент отменил запись
+    public void notifyMasterAppointmentCancelledByClient(Appointment appointment) {
+        User master = userRepository.findByRole(Role.ADMIN).orElse(null);
+
+        if (master != null && master.getFcmToken() != null) {
+            String title = "❌ Запись отменена клиентом";
+            String body = String.format("%s %s отменил запись на %s в %s",
+                    appointment.getClient().getFirstName(),
+                    appointment.getClient().getLastName() != null ? appointment.getClient().getLastName() : "",
+                    appointment.getService().getName(),
+                    appointment.getStartTime().format(DateTimeFormatter.ofPattern("dd.MM HH:mm")));
+
+            sendNotification(master.getFcmToken(), title, body, "APPOINTMENT_CANCELLED", appointment.getId());
+        }
+    }
 }

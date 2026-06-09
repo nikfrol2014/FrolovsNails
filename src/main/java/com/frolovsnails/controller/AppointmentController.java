@@ -11,6 +11,7 @@ import com.frolovsnails.entity.*;
 import com.frolovsnails.mapper.AppointmentMapper;
 import com.frolovsnails.repository.*;
 import com.frolovsnails.service.AppointmentService;
+import com.frolovsnails.service.NotificationService;
 import com.frolovsnails.service.ScheduleService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -49,8 +50,60 @@ public class AppointmentController {
     private final UserRepository userRepository;
     private final AvailableDayRepository availableDayRepository;
     private final ClientRepository clientRepository;
+    private final NotificationService notificationService;
 
     // ========== КЛИЕНТСКИЕ ЭНДПОИНТЫ ==========
+
+    @PatchMapping("/client/{id}/status")
+    @Operation(summary = "Изменить статус записи (для клиентов)")
+    @PreAuthorize("hasRole('CLIENT')")
+    public ResponseEntity<ApiResponse> updateClientAppointmentStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateAppointmentStatusRequest request) {
+
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String phone = auth.getName();
+
+            Appointment appointment = appointmentRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Запись не найдена"));
+
+            Client client = clientRepository.findByUserPhone(phone)
+                    .orElseThrow(() -> new RuntimeException("Клиент не найден"));
+
+            if (!appointment.getClient().getId().equals(client.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(ApiResponse.error("Вы не можете изменить статус этой записи"));
+            }
+
+            AppointmentStatus oldStatus = appointment.getStatus();
+            AppointmentStatus newStatus = request.getStatus();
+
+            // Разрешенные статусы для клиента
+            if (newStatus != AppointmentStatus.CONFIRMED &&
+                    newStatus != AppointmentStatus.CANCELLED) {
+                return ResponseEntity.badRequest()
+                        .body(ApiResponse.error("Недопустимый статус для клиента"));
+            }
+
+            appointment.setStatus(newStatus);
+            appointmentRepository.save(appointment);
+
+            // ========== ОТПРАВИТЬ УВЕДОМЛЕНИЕ МАСТЕРУ ==========
+            if (newStatus == AppointmentStatus.CONFIRMED) {
+                notificationService.notifyMasterAppointmentConfirmed(appointment);
+            } else if (newStatus == AppointmentStatus.CANCELLED) {
+                notificationService.notifyMasterAppointmentCancelledByClient(appointment);
+            }
+
+            return ResponseEntity.ok(ApiResponse.success("Статус обновлен",
+                    appointmentMapper.toResponse(appointment)));
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Ошибка: " + e.getMessage()));
+        }
+    }
 
     @GetMapping("/my/filtered")
     @Operation(summary = "Получить мои записи с фильтрацией (для клиентов)")

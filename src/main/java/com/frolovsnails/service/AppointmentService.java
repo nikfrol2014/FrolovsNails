@@ -259,10 +259,10 @@ public class AppointmentService {
 
         Appointment saved = appointmentRepository.save(appointment);
 
-        // ДОБАВИТЬ: Уведомление клиенту об изменении статуса
+        // Уведомление клиенту об изменении статуса
         notificationService.notifyClientStatusChanged(saved, newStatus.name());
 
-        // ДОБАВИТЬ: Уведомление мастеру (если клиент что-то изменил)
+        // Уведомление мастеру (если клиент что-то изменил)
         if (!oldStatus.equals(newStatus)) {
             notificationService.notifyMasterStatusChanged(saved, oldStatus.name(), newStatus.name());
         }
