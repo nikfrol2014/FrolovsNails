@@ -128,4 +128,12 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
     List<Appointment> findByClientIdAndDateRange(@Param("clientId") Long clientId,
                                                  @Param("startDate") LocalDateTime startDate,
                                                  @Param("endDate") LocalDateTime endDate);
+
+    // Добавить в AppointmentRepository.java
+
+    @Query("SELECT a FROM Appointment a WHERE a.startTime BETWEEN :startDate AND :endDate AND a.status = :status")
+    List<Appointment> findByStartTimeBetweenAndStatus(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            @Param("status") AppointmentStatus status);
 }

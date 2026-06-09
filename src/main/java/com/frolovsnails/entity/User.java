@@ -38,6 +38,9 @@ public class User {
     @Column(nullable = false)
     private Boolean enabled = true;
 
+    @Column(name = "fcm_token", length = 500)
+    private String fcmToken;
+
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

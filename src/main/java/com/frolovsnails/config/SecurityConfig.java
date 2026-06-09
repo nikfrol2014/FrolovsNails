@@ -41,9 +41,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // ВСЕ публичные эндпоинты (Swagger, статика, аутентификация)
                         .requestMatchers(
-                                // Swagger UI
                                 "/",
                                 "/docs",
                                 "/api",
@@ -61,35 +59,28 @@ public class SecurityConfig {
                                 "/webjars",
                                 "/favicon.ico",
 
-                                // Аутентификация
                                 "/api/auth/**",
 
-                                // Публичные тестовые эндпоинты
                                 "/api/test/health",
                                 "/api/test/db-status",
                                 "/api/test/public",
-                                "/api/test/create-test-services", // для создания тестовых услуг
+                                "/api/test/create-test-services",
 
-                                // Публичные эндпоинты услуг
                                 "/api/services",
                                 "/api/services/**",
                                 "/api/services/categories",
                                 "/api/services/category/**",
 
-                                // Публичный доступ к просмотру доступных слотов
                                 "/api/schedule/availability",
                                 "/api/schedule/availability/**",
 
-                                // Профиль мастера - публичный
                                 "/api/profile/master",
 
-                                // Статические ресурсы (если будут)
                                 "/css/**",
                                 "/js/**",
                                 "/images/**",
                                 "/favicon.ico",
 
-                                // Статические файлы
                                 "/",
                                 "/index.html",
                                 "/calendar.html",
@@ -97,49 +88,43 @@ public class SecurityConfig {
                                 "/js/**",
                                 "/images/**",
 
-                                // Для работы календаря
                                 "/api/schedule/admin/available-days",
                                 "/api/schedule/blocks",
                                 "/api/appointments",
                                 "/api/appointments/**",
 
-                                // Ошибки
                                 "/error",
                                 "/error/**",
 
-                                // Статические файлы (слайдер, прайс-лист)
                                 "/uploads/**",
-                                "/uploads/slider/**"
+                                "/uploads/slider/**",
+
+                                // ДОБАВИТЬ ЭНДПОЙНТ ДЛЯ FCM ТОКЕНА
+                                "/api/auth/fcm-token"
                         ).permitAll()
 
-                        // POST, PUT, DELETE для услуг требуют роли ADMIN
                         .requestMatchers(HttpMethod.POST, "/api/services").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/services/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/services/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/services/**").hasRole("ADMIN")
 
-                        // Управление расписанием - только для ADMIN
                         .requestMatchers(HttpMethod.GET, "/api/schedule/working-hours").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/schedule/working-hours/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/schedule/blocks").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/schedule/blocks").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/schedule/blocks/**").hasRole("ADMIN")
 
-                        // Записи - разные правила для разных методов
                         .requestMatchers("/api/appointments/client/available-slots").hasRole("CLIENT")
 
-                        // Админские эндпоинты для ручного управления
                         .requestMatchers("/api/appointments/master/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/appointments/master").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/appointments/master/**").hasRole("ADMIN")
 
-                        // Профиль пользователя
                         .requestMatchers(HttpMethod.GET, "/api/profile").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/profile").hasRole("CLIENT")
                         .requestMatchers(HttpMethod.PATCH, "/api/profile/password").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/profile/stats").hasRole("CLIENT")
 
-                        // Все остальные требуют аутентификации
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authenticationProvider())
@@ -152,7 +137,6 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(List.of("*"));
-//        configuration.setAllowedOriginPatterns(List.of("*", "**", "/**"));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
@@ -160,7 +144,6 @@ public class SecurityConfig {
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
-//        source.registerCorsConfiguration("**", configuration);
         return source;
     }
 

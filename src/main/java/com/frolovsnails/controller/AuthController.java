@@ -4,13 +4,19 @@ import com.frolovsnails.dto.request.LoginRequest;
 import com.frolovsnails.dto.request.RegisterRequest;
 import com.frolovsnails.dto.response.ApiResponse;
 import com.frolovsnails.dto.response.AuthResponse;
+import com.frolovsnails.entity.User;
+import com.frolovsnails.repository.UserRepository;
 import com.frolovsnails.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -19,6 +25,7 @@ import org.springframework.web.bind.annotation.*;
 public class AuthController {
 
     private final AuthService authService;
+    private final UserRepository userRepository;
 
     @PostMapping("/register")
     @Operation(summary = "Регистрация нового клиента")
@@ -73,5 +80,24 @@ public class AuthController {
     public ResponseEntity<ApiResponse> logout() {
         // В stateless архитектуре logout происходит на клиенте (удаление токена)
         return ResponseEntity.ok(ApiResponse.success("Выход выполнен успешно"));
+    }
+
+    @PostMapping("/fcm-token")
+    @Operation(summary = "Сохранить FCM токен для уведомлений")
+    public ResponseEntity<ApiResponse> saveFcmToken(@RequestBody Map<String, String> request) {
+        try {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            String phone = auth.getName();
+
+            User user = userRepository.findByPhone(phone)
+                    .orElseThrow(() -> new RuntimeException("Пользователь не найден"));
+
+            user.setFcmToken(request.get("token"));
+            userRepository.save(user);
+
+            return ResponseEntity.ok(ApiResponse.success("FCM токен сохранен"));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
+        }
     }
 }

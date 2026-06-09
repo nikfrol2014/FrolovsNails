@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 015-add-fcm-token-to-users
+      author: frolovsnails
+      changes:
+        - addColumn:
+            tableName: users
+            columns:
+              - column:
+                  name: fcm_token
+                  type: VARCHAR(500)
+                  constraints:
+                    nullable: true

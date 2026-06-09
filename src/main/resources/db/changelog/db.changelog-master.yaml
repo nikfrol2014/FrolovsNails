@@ -38,3 +38,6 @@ databaseChangeLog:
   - include:
       file: classpath:/db/changelog/changes/014-add-metadata-to-appointments.yaml
       relativeToChangelogFile: false
+  - include:
+      file: classpath:/db/changelog/changes/015-add-fcm-token-to-users.yaml
+      relativeToChangelogFile: false
