@@ -33,3 +33,13 @@ application-prod.yml
 
 # Environment variables
 .env
+
+# Firebase
+google-services.json
+firebase-service-account.json
+
+# Secrets
+*.properties
+*.key
+*.p12
+*.pem
