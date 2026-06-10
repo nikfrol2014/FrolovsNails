@@ -1,11 +1,15 @@
 package com.frolovsnails.dto.request;
 
+import com.frolovsnails.dto.annotation.MoscowDate;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
 
 @Data
 @NoArgsConstructor
@@ -17,7 +21,7 @@ public class RegisterRequest {
     private String phone;
 
     @NotBlank(message = "Пароль обязателен")
-    @Size(min = 6, message = "Пароль должен быть не менее 6 символов")
+//    @Size(min = 6, message = "Пароль должен быть не менее 6 символов")
     private String password;
 
     @NotBlank(message = "Имя обязательно")
@@ -26,4 +30,11 @@ public class RegisterRequest {
 
     @Size(max = 100, message = "Фамилия должна быть не более 100 символов")
     private String lastName;
+
+    // НОВЫЕ ПОЛЯ
+    @MoscowDate
+    @NotNull(message = "Дата рождения обязательна")
+    private LocalDate birthDate;
+
+    private String notes;  // опционально, будет заполняться по умолчанию
 }

@@ -47,6 +47,8 @@ public class AuthService {
         client.setUser(user);
         client.setFirstName(request.getFirstName());
         client.setLastName(request.getLastName());
+        client.setBirthDate(request.getBirthDate());  // обязательное поле
+        client.setNotes(request.getNotes() != null ? request.getNotes() : "Клиент зарегистрирован через приложение");  // значение по умолчанию
         clientRepository.save(client);
 
         // Генерируем токены
