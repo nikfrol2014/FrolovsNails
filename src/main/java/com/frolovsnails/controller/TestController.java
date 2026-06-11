@@ -16,6 +16,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -306,14 +307,16 @@ public class TestController {
     public String testRaceCondition() {
         // Эмуляция двух одновременных запросов
         ExecutorService executor = Executors.newFixedThreadPool(2);
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
+        LocalDateTime localDateTime = LocalDateTime.parse("16.06.2026 10:00", formatter);
 
         Callable<Appointment> task1 = () ->
-                appointmentService.createClientAppointment("12345",
-                        new CreateAppointmentRequest(1L, LocalDateTime.now().plusDays(1).withHour(15), ""));
+                appointmentService.createClientAppointment("11111111111",
+                        new CreateAppointmentRequest(1L,localDateTime, ""));
 
         Callable<Appointment> task2 = () ->
-                appointmentService.createClientAppointment("123456",
-                        new CreateAppointmentRequest(1L, LocalDateTime.now().plusDays(1).withHour(15), ""));
+                appointmentService.createClientAppointment("22222222222",
+                        new CreateAppointmentRequest(1L, localDateTime, ""));
 
         Future<Appointment> future1 = executor.submit(task1);
         Future<Appointment> future2 = executor.submit(task2);
